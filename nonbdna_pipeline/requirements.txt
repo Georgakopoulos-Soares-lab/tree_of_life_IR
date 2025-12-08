@@ -1,0 +1,18 @@
+# utils
+termcolor
+pathlib
+argparse
+python-dotenv
+pytest
+
+# data-sciecne
+numpy
+pandas
+scipy
+pandas
+pybedtools
+
+# workflow
+snakemake
+biopython
+

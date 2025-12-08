@@ -1,0 +1,13 @@
+schedule: 'schedule_RTR.json'
+indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_IR'
+partition_col: 'spacer_length'
+min_partition: 0
+max_partition: 9
+min_consensus_repeats: 3
+max_spacer: 8
+min_sequence_length: 10
+min_arm_length: 10
+pattern: 'IR'
+seq_col: 'sequence'
+step_threshold: 0.05
+assembly_summary: 'data/assembly_summary_with_tree.csv.gz'

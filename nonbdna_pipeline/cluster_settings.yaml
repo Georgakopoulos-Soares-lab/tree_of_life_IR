@@ -1,0 +1,5 @@
+__default__:
+    partition: 'gg'
+    nodes: 1
+    jobName: 'HolySnake'
+    time: '48:00:00'
