@@ -1,0 +1,11 @@
+*csv
+*txt
+*png
+*pdf
+*.json
+*.out
+*.err
+*.yaml
+*.pyc
+*.snakemake
+**/*.yaml

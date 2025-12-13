@@ -2,8 +2,8 @@
 
 #SBATCH -J NonBDNA
 #SBATCH -p gg
-#SBATCH -N 1
-#SBATCH -n 1
+#SBATCH -N 2
+#SBATCH -n 288
 #SBATCH --time=48:00:00
 #SBATCH --output=nonbdna_main_shuffled/slurm-%j_%a.out
 #SBATCH --error=nonbdna_main_shuffled/slurm-%j_%a.err
@@ -12,26 +12,32 @@
 
 SCHEDULE=$1
 PATTERN=${2:-"IR"}
-BID=${SLURM_ARRAY_TASK_ID}
+BID=${3:-140}
+LAST_BID=$((BID - 1))
 OUTDIR=$SCRATCH/"nonbdna_data_extractions"
-level=3
+level=${4:-2}
 
 mkdir -p $OUTDIR
+DATE=$(date +"%m-%d-%Y")
+echo "Total buckets: $BID"
+echo "Last bucket id: $LAST_BID"
+echo "Pattern: $PATTERN"
+echo "Shuffling level: $level."
+##
+echo "Initializing process..."
+## 
+for BUCKET in $(seq 0 $LAST_BID);
+do
+	srun --exclusive \
+		-N1 \
+		-n1 \
+		-t 48:00:00 \
+		python main.py \
+	 	--schedule $SCHEDULE \
+	       	--bucket_id $BUCKET \
+	       	--pattern $PATTERN \
+	       	--outdir "$OUTDIR/extractions_shuffled_level_${DATE}_${level}_${PATTERN}" &
+done
 
-echo "Processing Bucket ${BID}."
-if [[ -z $BID ]];
-then
-        echo "TASK_ID not provided. Will fetch from user."
-        BID=$3
-        if [[ -z $BID ]];
-        then
-                echo "No user provided TASK_ID. Exiting..."
-                exit 1
-        fi
-fi
-
-python main.py --schedule $SCHEDULE \
-	       --bucket_id $BID \
-	       --pattern $PATTERN \
-	       --outdir "$OUTDIR/extractions_shuffled_level_${level}_${PATTERN}"
-echo "Bucket ${BID} is complete."
+wait
+echo "Process finished!"

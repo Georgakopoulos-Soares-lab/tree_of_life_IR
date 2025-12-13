@@ -2,6 +2,7 @@ from ushuffle import shuffle, Shuffler
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 import json
 from pathlib import Path
+from tqdm import tqdm
 import gzip
 
 extract_name = lambda accession: Path(accession).name.split('.fna')[0]
@@ -19,8 +20,11 @@ def parse_fasta(accession):
 
 def shuffle_genome(fasta, outdir, level = 2):
     name = extract_name(fasta)
-    MAX = 10_000_000
-    shuffled_genome = open(f"{outdir}/{name}_level_{level}.shuffled.fna", mode="wb")
+    MAX = 1_000
+    outfile_shuffle = Path(f"{outdir}/{name}_level_{level}.shuffled.fna")
+    if outfile_shuffle.is_file():
+        return 
+    shuffled_genome = open(outfile_shuffle, mode="wb")
     for seqID, seq in parse_fasta(fasta):
         shuffled_seq = b""
         total_len = len(seq)
@@ -46,13 +50,14 @@ def process_bucket(outdir, bucket_id, schedule, level = 2):
     outdir = Path(outdir).resolve()
     design_dest = open(f"design_bucket_{bucket_id}.csv", mode="w")
     for fasta in bucket:
-        shuffle_genome(fasta, outdir=outdir, level=level)
         name = extract_name(fasta)
         accession_id = extract_id(fasta)
         target = Path(f"{outdir}/{name}_level_{level}.shuffled.fna")
-        print(target)
-        assert target.is_file()
-        design_dest.write(f"{accession_id},{fasta},{target},{bucket_id}\n")
+        print(f"Processing {target}...")
+        shuffle_genome(fasta, outdir=outdir, level=level)
+        if target.is_file():
+            print(f"{target} has been processed succesfully.")
+            design_dest.write(f"{accession_id},{fasta},{target},{bucket_id}\n")
     design_dest.close()
 
 if __name__ == "__main__":
@@ -60,7 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""Genome shuffler for creation of negative controls.""")
     parser.add_argument("--schedule", type=str, default="schedule_shuffling.json")
     parser.add_argument("--bucket_id", type=int, default=0)
-    parser.add_argument("--outdir", type=str, default="scratch/nmc6088/zimin_shuffling")
+    parser.add_argument("--outdir", type=str, default="scratch/nmc6088/IR_shuffled_12_8_2025")
     parser.add_argument("--level", type=int, default=2)
     args = parser.parse_args()
     outdir = Path(args.outdir)
