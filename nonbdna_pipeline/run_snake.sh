@@ -3,17 +3,10 @@
 #SBATCH -J HolySnake
 #SBATCH --time=48:00:00
 #SBATCH -p gg
-#SBATCH -N 1
-#SBATCH -n 1
+#SBATCH -N 2
+#SBATCH -n 288
 
-j=$1
-if [[ -d ".snakemake" ]];
-then
-	echo "SNAKEMAKE <CHANNI>"
-	# rm -rf .snakemake
-	# snakemake --cleanup-metadata --snakefile extract_nonbdna.smk
-fi
-
+j=288
 if [[ ! -n ${SSH_CONNECTION} ]];
 then
   snakemake --snakefile extract_nonbdna.smk \
@@ -23,15 +16,11 @@ then
                 --keep-incomplete
 else
   snakemake --snakefile extract_nonbdna.smk \
-	    --keep-incomplete \
-	    --rerun-triggers mtime \
-	    --keep-going \
-	    --latency-wait 45 \
-	    --cluster-config cluster_settings.yaml \
-	    --cluster "sbatch -p {cluster.partition} \
-	    		      -t {cluster.time} \
-			      -N {cluster.nodes} \
-		              -J {cluster.jobName} \
-		              -o jobOut/{cluster.jobName}-%j.out \
-			      -e jobOut/{cluster.jobName}-%j.err" -j $j
+        --executor local \
+        --jobs $j \
+        --keep-going \
+        --keep-incomplete \
+        --rerun-incomplete \
+        --scheduler greedy \
+        --latency-wait 45
 fi

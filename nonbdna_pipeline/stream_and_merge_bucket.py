@@ -177,6 +177,8 @@ class StreamAndMerge:
                 shape_before = df.shape[0]
                 df_collection = dict()
                 df.loc[:, "sequence"] = df["sequence"].str.lower()
+                nucleotides = {"a", "g", "c", "t"}
+                df = df[df["sequence_of_arm"].apply(lambda x: all(i in nucleotides for i in x))].reset_index(drop=True)
                 if pattern == "STR":
                     df = df[(df["consensus_repeats"] >= self.min_consensus_repeats) \
                                 & (df["sequence_length"] >= self.min_sequence_length) \
