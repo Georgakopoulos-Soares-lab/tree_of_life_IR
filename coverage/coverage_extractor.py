@@ -432,6 +432,10 @@ class CoverageExtractor:
                     extraction_table = extraction_table.rename({
                                                             "chromosome": "seqID",
                                                         })
+                elif "chrom" in extraction_table.columns:
+                    extraction_table = extraction_table.rename({
+                                                            "chrom": "seqID",
+                                                        })
             if "seqID" not in extraction_table.columns:
                 raise KeyError(f"Invalid column for chromosome ID.")
 

@@ -915,6 +915,9 @@ class CoverageExtractor(GFFExtractor):
             self.biotypes = ["protein_coding", "non_coding", "."]
         else:
             self.biotypes = biotypes
+        print(f"Processing biotypes:")
+        for biotype in self.biotypes:
+            print(f"Biotype > {biotype}.")
 
         self.extractions = dict()
         self.sleeping_time = sleeping_time
@@ -1332,7 +1335,7 @@ if __name__ == "__main__":
     parser.add_argument("--group", type=int, default=1, choices=[0, 1])
     parser.add_argument("--replace_pseudogene_with_gene", type=int, default=1, choices=[0, 1])
     parser.add_argument("--partition_col", type=str, default=None)
-    parser.add_argument("--partition_groups", nargs="+", default=list(range(1, 10)), type=list)
+    parser.add_argument("--partition_groups", nargs="+", default=list(range(9)), type=list)
     parser.add_argument("--overload_biotype", type=int, choices=[0, 1], default=1)
     parser.add_argument("--polarity", type=int, default=0, choices=[0, 1])
     parser.add_argument("--default_col", type=str, default="phase", choices=["score", "phase"])
@@ -1342,8 +1345,12 @@ if __name__ == "__main__":
     parser.add_argument("--promoter_kb", type=int, default=100)
     parser.add_argument("--terminator_kb", type=int, default=100)
 
+    from pybedtools.helpers import set_tempdir
+    set_tempdir("/scratch/10904/nikolchanchan")
+
     args = parser.parse_args()
     out = Path(args.out).resolve()
+    out.mkdir(exist_ok=True)
     if not out.is_dir():
         raise ValueError(f'Failure to create destination directory at `{out}`. Is it a nested structure?')
 

@@ -127,8 +127,12 @@ class DensityExtractor:
         # Check if chromosomes are OK
         if "seqID" not in extractions_df.columns and "chromosome" in extractions_df.columns:
             extractions_df = extractions_df.rename({"chromosome": "seqID"})
+        elif "seqID" not in extractions_df.columns and "chrom" in extractions_df.columns:
+            extractions_df = extractions_df.rename({"chrom": "seqID"})
         elif "seqID" not in extractions_df.columns and "sequence_name" in extractions_df.columns:
             extractions_df = extractions_df.rename({"sequence_name": "seqID"})
+        elif "seqID" not in extractions_df.columns and "Sequence_name" in extractions_df.columns:
+            extractions_df = extractions_df.rename({"Sequence_name": "seqID"})
         elif "seqID" not in extractions_df:
             raise KeyError(f"Column `seqID` is not present in the extractions dataframe.")
 
@@ -514,20 +518,51 @@ class DensityExtractor:
         bucket = self.load_bucket(bucket_id=bucket_id)
         logging.info(f"Processing bucket `{bucket_id}`...")
         print(f"Processing bucket `{bucket_id}`...")
-        densities = []
         tracker = CoverageExtractor._TrackProgress(bucket_id=bucket_id,
                                                    total_records=len(bucket),
                                                    sleeping_time=sleeping_time
                                                    )
         daemon = threading.Thread(target=tracker.start, daemon=True, name="LoggingDensityDaemon")
         daemon.start()
+    
+        # LOAD
+        MAXIMUM_STREAMING_LOAD = 10
+        densities = []
+
+        # COLLECTION
+        collection_dest = dict()
+        collection_handlers = dict()
+        first_headers = dict()
+        sites = ["TSS", "TES"]
+        if self.mode == "density":
+            for site in sites:
+                for _biotype in self.biotypes:
+                    collection_dest[site, _biotype] = f"{out}/enrichment_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}_{polarity_mode}.{_biotype}.{site}.{self.format}"
+            dest_empty = f"{out}/empty_accessions_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}.txt"
+        else:
+            for site in sites:
+                for _biotype in self.biotypes:
+                    if _biotype == ".":
+                        _biotype = "generic"
+                    collection_dest[site, _biotype] = f"{out}/enrichment_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}_{polarity_mode}.{_biotype.replace('.', 'generic')}.{site}.{self.format}"
+            dest_empty = f"{out}/empty_accessions_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}_{polarity_mode}.txt"
+        # # Initialize Collection # # 
+        for site in sites:
+            for _biotype in self.biotypes:
+                collection_handlers[site, _biotype] = open(collection_dest[site, _biotype], mode="w", encoding="UTF-8")
+                first_headers[site, _biotype] = True
+                at_ = collection_dest[site, _biotype]
+                logging.info(f"Saving density output for {site} & biotype={_biotype} at `{at_}`... (bucket {bucket_id}).")
+                print(colored(f"Saving density output for {site} & biotype={_biotype} at `{at_}`... (bucket {bucket_id}).", "green"))
+
+        first_write = True
         for gff in tqdm(bucket):
             logging.info(f"Processing accession `{gff}` (bucket {bucket_id}).")
             accession_id = extract_id(gff)
             extraction_filename = self.extractions.get(accession_id)
             if extraction_filename is None:
                 logging.info(f"Failed to find extraction file for accession id `{accession_id}`.")
-                print(f"Failed to find extraction file for accession id `{accession_id}`.")
+                tqdm.write(f"Failed to find extraction file for accession id `{accession_id}`.")
                 continue
             tracker.track += 1
             densities_table = self.process(
@@ -542,49 +577,62 @@ class DensityExtractor:
                                     accession_id=accession_id,
                                     return_df=False
                                     # genome=genome,
-                                    )
-            densities.extend(densities_table)
-
-        if self.mode == "density":
-            dest_TSS = f"{out}/enrichment_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}.TSS.{self.format}"
-            dest_TES = f"{out}/enrichment_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}.TES.{self.format}"
-            dest_empty = f"{out}/empty_accessions_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}.txt"
-        else:
-            dest_TSS = f"{out}/enrichment_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}_{polarity_mode}.TSS.{self.format}"
-            dest_TES = f"{out}/enrichment_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}_{polarity_mode}.TES.{self.format}"
-            dest_empty = f"{out}/empty_accessions_bucket_{bucket_id}_{window_size}_{compartment}_{self.mode}_{polarity_mode}.txt"
-
-        logging.info(f"Saving density output for TSS at `{dest_TSS}`... (bucket {bucket_id}).")
-        logging.info(f"Saving density output for TES at `{dest_TES}`... (bucket {bucket_id}).")
-        print(colored(f"Saving density output at `{dest_TSS}`... (bucket {bucket_id}).", "green"))
-        print(colored(f"Saving density output at `{dest_TES}`... (bucket {bucket_id}).", "green"))
-        densities_df = pl.concat(densities)
-        if self.format == "txt":
-            densities_df.filter(pl.col("site") == "TSS")\
-                        .write_csv(dest_TSS,
-                               separator="\t",
-                               include_header=True,
-                               float_precision=self.float_precision
-                               )
-            densities_df.filter(pl.col("site") == "TES")\
-                        .write_csv(dest_TES,
-                                separator="\t",
-                                include_header=True,
-                                float_precision=self.float_precision
                             )
-        elif self.format == "parquet":
-            densities_df.filter(pl.col("site") == "TSS")\
-                        .write_parquet(dest_TSS,
-                                        compression=self.compression,
-                                        use_pyarrow=self.use_pyarrow,
-                                        statistics=self.statistics
-                                        )
-            densities_df.filter(pl.col("site") == "TES")\
-                        .write_parquet(dest_TES,
-                                        compression=self.compression,
-                                        use_pyarrow=self.use_pyarrow,
-                                        statistics=self.statistics
-                                        )
+            densities.extend(densities_table)
+            EXCEEDED_STREAMING_LOAD = len(densities) > MAXIMUM_STREAMING_LOAD
+            if EXCEEDED_STREAMING_LOAD:
+                densities_df = pl.concat(densities)
+                for site in sites:
+                    for _biotype in self.biotypes:
+                        (
+                            densities_df
+                                .filter(pl.col("site") == site, 
+                                        pl.col("biotype") == _biotype)
+                                .write_csv(
+                                    collection_handlers[site, _biotype],
+                                    separator="\t",
+                                    include_header=first_headers[site, _biotype],
+                                    float_precision=self.float_precision
+                                )
+                        )
+                        first_headers[site, _biotype] = False
+                densities = []
+        if densities:
+            densities_df = pl.concat(densities)
+            for site in sites:
+                for _biotype in self.biotypes:
+                    (
+                        densities_df
+                        .filter(
+                            pl.col("site") == site,
+                            pl.col("biotype") == _biotype
+                        ).write_csv(
+                            collection_handlers[site, _biotype],
+                            separator="\t",
+                            include_header=first_headers[site, _biotype],
+                            float_precision=self.float_precision
+                        )
+                    )
+            densities = []
+        # elif self.format == "parquet":
+        #    densities_df.filter(pl.col("site") == "TSS")\
+        #                .write_parquet(dest_TSS,
+        # compression=self.compression,
+        #                                use_pyarrow=self.use_pyarrow,
+        #                                statistics=self.statistics
+        #                                )
+        #    densities_df.filter(pl.col("site") == "TES")\
+        #           .write_parquet(dest_TES,
+        #                                compression=self.compression,
+        #                                use_pyarrow=self.use_pyarrow,
+        #                                statistics=self.statistics
+        #                                )
+        logging.info(f"Closing files... (bucket {bucket_id}).")
+        for site in sites:
+            for _biotype in self.biotypes:
+                collection_handlers[site, _biotype].close()
+            logging.info(f"Closing file for {site} & biotype={_biotype} at `{at_}`... (bucket {bucket_id}).")
+            print(colored(f"Closing file for {site} & biotype={_biotype} at `{at_}`... (bucket {bucket_id}).", "green"))
         with open(dest_empty, mode="w", encoding="utf-8") as f:
             for accession_id in self.empty_accessions:
                 f.write(accession_id + "\n")
@@ -633,6 +681,8 @@ if __name__ == "__main__":
     biotype = bool(args.biotype)
     compartment = args.compartment
     out = Path(args.out).resolve()
+    from pybedtools.helpers import set_tempdir
+    set_tempdir("/scratch/10904/nikolchanchan/tmp")
     if args.partition_col:
         out = out.joinpath(f"mode_{mode}_partition_{args.partition_col}")
         biolog_file = out.joinpath(f"biologs/enrichment_bucket_{bucket_id}_mode_{mode}_partition_{args.partition_col}.log")

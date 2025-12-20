@@ -14,6 +14,7 @@ if __name__ == "__main__":
     extract_id = lambda accession: "_".join(Path(accession).name.split("_")[:2])
     parser = argparse.ArgumentParser(description=""".""")
     parser.add_argument("indir", type=str)
+    parser.add_argument("--suffix", type=str, default="normal")
     parser.add_argument("--gff_files", type=str)
     parser.add_argument("--tree_of_life", type=str, default="../nonbdna_pipeline/assembly_summary_with_tree.csv.gz")
     parser.add_argument("--pattern", type=str, default="STR", choices=["STR", "MR", "HDNA", "GT", "IR", "DR", "GQ"])
@@ -53,14 +54,14 @@ if __name__ == "__main__":
     files = {extract_id(file): file for file in indir.glob(f"*_{pattern}.processed.tsv")}
     print(f"Total files found: {len(files)}.")
     print("Creating preliminary schedule...")
-    with open(f"design_{pattern}.csv", mode="w", encoding="UTF-8") as f:
+    with open(f"design_{pattern}.{args.suffix}.csv", mode="w", encoding="UTF-8") as f:
         f.write("accession_id\textraction\n")
         for file_id, file in files.items():
             f.write(f"{file_id}\t{file}\n")
     print("Creating enhanced design file...")
-    design_df = pd.read_table(f"design_{pattern}.csv")\
+    design_df = pd.read_table(f"design_{pattern}.{args.suffix}.csv")\
                     .merge(GFF_files,
-                            how="inner",
-                            on="accession_id")
-    design_df.to_csv(f"design_{pattern}_with_tree.csv", mode="w", sep="\t", index=False, header=True)
+                        how="inner",
+                        on="accession_id")
+    design_df.to_csv(f"design_{pattern}_with_tree.{args.suffix}.csv", mode="w", sep="\t", index=False, header=True)
     print(colored("DONE!", "green"))

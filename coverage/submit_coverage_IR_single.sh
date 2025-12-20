@@ -2,8 +2,8 @@
 
 #SBATCH -J CoverageNonB
 #SBATCH --time=48:00:00
-#SBATCH -N 2
-#SBATCH -n 288
+#SBATCH -N 1
+#SBATCH -n 144
 #SBATCH -p gg
 #SBATCH --output=coverage_IR_log/density_%j_%x_%a.out
 #SBATCH --error=coverage_IR_log/density_%j_%x_%a.err
@@ -22,35 +22,23 @@ PARTITION_COL="spacer_length"
 # INPUT
 SCHEDULE=$1
 DESIGN=$2
-BID=${3:-288}
+BUCKET=${3:-288}
 OUT=${4:-"coverage_out_IR"}
 
 mkdir -p $OUT
 DATE=$(date +"%m-%d-%Y")
-LAST_BID=$((BID-1))
-
 # RUN PARAMS
 echo "Date $DATE"
 echo "Total buckets: $BID"
-echo "Last bucket id: $LAST_BID"
 echo "Initializing process..."
 
 # RUN PIPELINE
-for BUCKET in $(seq 0 $LAST_BID);
-do
-	srun --exclusive \
-		-N1 \
-		-n2 \
-		-t 48:00:00 \
-			python gff_utils.py ${SCHEDULE} \
+python gff_utils.py ${SCHEDULE} \
           		--bucket_id ${BUCKET} \
 	  		--design ${DESIGN} \
           		--polarity ${POLARITY}  \
           		--strand_mode ${POLARITY_MODE} \
 	  		--partition_col ${PARTITION_COL} \
 	  		--out ${OUT} \
-	  		--overload_biotype 1 &
-done
-
-wait
+	  		--overload_biotype 1
 echo "Process has been completed succesfully."

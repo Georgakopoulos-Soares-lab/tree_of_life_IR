@@ -45,16 +45,17 @@ print(f"Redirecting phylum level outputs to --> `{dest_dir_phylum}`.")
 
 rule all:
     input:
-        expand(['%s/mode_%s_partition_%s/phylum_bootstrap/enrichment_bootstrap_alpha_%s.{site}.%s.phylum.{phylum}.csv' % (out, mode, partition_col, alpha, mode)], 
+        expand(['%s/mode_%s_partition_%s/phylum_bootstrap/enrichment_bootstrap_alpha_%s_GC.{biotype}.{site}.%s.phylum.{phylum}.csv' % (out, mode, partition_col, alpha, mode)], 
+biotype=BIOTYPES,
 											site=SITES, 
 											phylum=PHYLUMS),
 
 rule taxonomy_phylum_bootstrap:
     input:
         DESIGN,
-        '%s/mode_%s_partition_%s/enrichment_%s_%s.{site}.parquet' % (out, mode, partition_col, compartment, mode),
+        '%s/mode_%s_partition_%s/enrichment_%s_%s.{biotype}.{site}.parquet' % (out, mode, partition_col, compartment, mode),
     output:
-        '%s/mode_%s_partition_%s/phylum_bootstrap/enrichment_bootstrap_alpha_%s.{site}.%s.phylum.{phylum}.csv' % (out, mode, partition_col, alpha, mode),
+        '%s/mode_%s_partition_%s/phylum_bootstrap/enrichment_bootstrap_alpha_%s.{biotype}.{site}.%s.phylum.{phylum}.csv' % (out, mode, partition_col, alpha, mode),
     params:
         window_size=int(config['window_size']),
         alpha=round(float(config['alpha']), 2),

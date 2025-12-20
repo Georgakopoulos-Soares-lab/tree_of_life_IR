@@ -18,10 +18,21 @@ polarity_type = config['polarity_type']
 total_buckets = int(config['total_buckets'])
 window_size = int(config['window_size'])
 
+# constants
+BIOTYPES = config['BIOTYPES']
+if not BIOTYPES:
+    BIOTYPES = ["protein_coding", "non_coding", "."]
+DOMAINS = ["Archaea", "Bacteria", "Eukaryota", "Viruses"]
+# DOMAINS = ["Bacteria"]
+SITES = ["TSS", "TES"]
+# <<
+
 valid_bucket_ids = []
 for bucket in range(total_buckets):
-    if Path(f'{out}/mode_{mode}_partition_{partition_col}/enrichment_bucket_{bucket}_{window_size}_{compartment}_{mode}.TSS.txt').is_file():
-        valid_bucket_ids.append(bucket)
+    for site in SITES:
+        for biotype in BIOTYPES:
+            if Path(f'{out}/mode_{mode}_partition_{partition_col}/enrichment_bucket_{bucket}_{window_size}_{compartment}_{mode}_GC.{biotype}.{site}.txt').is_file():
+                valid_bucket_ids.append(bucket)
 
 print(f"Total valid bucket ids: {len(valid_bucket_ids)}.")
 # load phylums
@@ -37,14 +48,6 @@ info_color = "red" if total_phylums == 0 else "blue"
 print(colored(f"Total phylums detected: {total_phylums}.", info_color))
 # <<
 
-# constants
-BIOTYPES = config['BIOTYPES']
-if not BIOTYPES:
-    BIOTYPES = ["protein_coding", "non_coding", "."]
-DOMAINS = ["Archaea", "Bacteria", "Eukaryota", "Viruses"]
-# DOMAINS = ["Bacteria"]
-SITES = ["TSS", "TES"]
-# <<
 
 # create directories
 dest_dir_domain = Path(f"{out}/mode_{mode}_partition_{partition_col}/domain_bootstrap")
@@ -60,18 +63,19 @@ print(f"Redirecting phylum level outputs to --> `{dest_dir_phylum}`.")
 
 rule all:
     input:
-        expand(['%s/mode_%s_partition_%s/domain_bootstrap/enrichment_bootstrap_alpha_%s.{site}.%s.domain.{domain}.csv' % (out, mode, partition_col, alpha, mode),
-                '%s/mode_%s_partition_%s/domain_bootstrap/enrichment_phylums.{site}.%s.{domain}.csv' % (out, mode, partition_col, mode)],
+        expand(['%s/mode_%s_partition_%s/domain_bootstrap/enrichment_bootstrap_alpha_%s.{biotype}.{site}.%s.domain.{domain}.csv' % (out, mode, partition_col, alpha, mode),
+                '%s/mode_%s_partition_%s/domain_bootstrap/enrichment_phylums.{biotype}.{site}.%s.{domain}.csv' % (out, mode, partition_col, mode)],
+                                 biotype=BIOTYPES,
                                  site=SITES,
                                  domain=DOMAINS)
 rule concat:
     input:
-        expand('%s/mode_%s_partition_%s/enrichment_bucket_{bucket}_%s_%s_%s.{{site}}.txt' % (out, mode, partition_col, window_size, compartment, mode),
+        expand('%s/mode_%s_partition_%s/enrichment_bucket_{bucket}_%s_%s_%s_GC.{{biotype}}.{{site}}.txt' % (out, mode, partition_col, window_size, compartment, mode),
                         bucket=valid_bucket_ids
                 ),
     output:
-        "%s/mode_%s_partition_%s/enrichment_%s_%s.{site}.txt" % (out, mode, partition_col, compartment, mode),
-        "%s/mode_%s_partition_%s/enrichment_%s_%s.{site}.parquet" % (out, mode, partition_col, compartment, mode)
+        "%s/mode_%s_partition_%s/enrichment_%s_%s.{biotype}.{site}.txt" % (out, mode, partition_col, compartment, mode),
+        "%s/mode_%s_partition_%s/enrichment_%s_%s.{biotype}.{site}.parquet" % (out, mode, partition_col, compartment, mode)
     run:
         df_all = []
         with tempfile.NamedTemporaryFile(delete=False, mode="a") as tmpfile:
@@ -89,12 +93,12 @@ rule concat:
 
 rule taxonomy_domain_bootstrap:
     input:
-        '%s/mode_%s_partition_%s/enrichment_%s_%s.{site}.txt' % (out, mode, partition_col, compartment, mode),
-        '%s/mode_%s_partition_%s/enrichment_%s_%s.{site}.parquet' % (out, mode, partition_col, compartment, mode),
+        '%s/mode_%s_partition_%s/enrichment_%s_%s.{biotype}.{site}.txt' % (out, mode, partition_col, compartment, mode),
+        '%s/mode_%s_partition_%s/enrichment_%s_%s.{biotype}.{site}.parquet' % (out, mode, partition_col, compartment, mode),
         design,
     output:
-        '%s/mode_%s_partition_%s/domain_bootstrap/enrichment_bootstrap_alpha_%s.{site}.%s.domain.{domain}.csv' % (out, mode, partition_col, alpha, mode),
-        '%s/mode_%s_partition_%s/domain_bootstrap/enrichment_phylums.{site}.%s.{domain}.csv' % (out, mode, partition_col, mode)
+        '%s/mode_%s_partition_%s/domain_bootstrap/enrichment_bootstrap_alpha_%s.{biotype}.{site}.%s.domain.{domain}.csv' % (out, mode, partition_col, alpha, mode),
+        '%s/mode_%s_partition_%s/domain_bootstrap/enrichment_phylums.{biotype}.{site}.%s.{domain}.csv' % (out, mode, partition_col, mode)
     params:
         window_size=int(config['window_size']),
         alpha=round(float(config['alpha']), 2),
