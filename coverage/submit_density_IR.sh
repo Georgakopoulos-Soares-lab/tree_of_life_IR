@@ -19,9 +19,10 @@ export PYTHONUNBUFFERED=1
 SCHEDULE=$1
 DESIGN=${2:-"design.csv"}
 BID=${3:-432}
-COMPARTMENT=${4:-"gene"}
+TEMPDIR="$4"
 OUTDIR=${5:-"enrichment_out_IR"}
-WINDOW_SIZE=${6:-500}
+COMPARTMENT=${6:-"gene"}
+WINDOW_SIZE=${7:-500}
 
 mkdir -p $OUTDIR
 DATE=$(date +"%m-%d-%Y")
@@ -32,24 +33,43 @@ echo "Last bucket id: $LAST_BID"
 echo "Pattern: $PATTERN"
 echo "Initializing process..."
 
-##
-for BUCKET in $(seq 0 $LAST_BID);
-do
-	srun --exclusive \
-		-N1 \
-		-n1 \
-		-t 48:00:00 \
+if [[ ! -n $SSH_CONNECTION ]];
+then
+    echo "I am here!"
+    for BUCKET in $(seq 0 $LAST_BID);
+    do
 		python density_utils.py ${SCHEDULE} \
 			--out ${OUTDIR} \
-        		--bucket_id ${BUCKET} \
-        		--mode ${MODE} \
-        		--design ${DESIGN} \
-        		--compartment ${COMPARTMENT} \
+            --bucket_id ${BUCKET} \
+            --mode ${MODE} \
+            --design ${DESIGN} \
+            --compartment ${COMPARTMENT} \
 			--biotype 1 \
-        		--polarity_mode ${POLARITY_MODE}  \
-        		--window_size ${WINDOW_SIZE} \
-			--partition_col ${PARTITION_COL} & 
-done
-
-wait
+			--tempdir ${TEMPDIR} \
+            --polarity_mode ${POLARITY_MODE}  \
+            --window_size ${WINDOW_SIZE} \
+			--partition_col ${PARTITION_COL} &
+	done
+	wait
+else
+    for BUCKET in $(seq 0 $LAST_BID);
+    do
+        srun --exclusive \
+            -N1 \
+            -n1 \
+            -t 48:00:00 \
+            python density_utils.py ${SCHEDULE} \
+			--out ${OUTDIR} \
+            --bucket_id ${BUCKET} \
+            --mode ${MODE} \
+            --design ${DESIGN} \
+            --tempdir ${TEMPDIR} \
+        	--compartment ${COMPARTMENT} \
+			--biotype 1 \
+            --polarity_mode ${POLARITY_MODE}  \
+            --window_size ${WINDOW_SIZE} \
+			--partition_col ${PARTITION_COL} &
+	done
+	wait
+fi
 echo "Process has been completed succesfully."
