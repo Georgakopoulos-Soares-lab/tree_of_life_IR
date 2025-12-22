@@ -112,6 +112,7 @@ rule taxonomy_domain_bootstrap:
         bootstrapper = Bootstrapper(design=input[2], enrichment_file=input[1], params=params)
         bootstrapper.bootstrap_enrichment(taxonomic_rank="domain",
                                           rank=wildcards.domain,
+                                          biotype=wildcards.biotype,
                                           partition_col=params.partition_col,
                                           polarity=params.polarity,
 					  partition_list=params.partition_list,

@@ -23,18 +23,18 @@ function UnlockDir() {
 		snakemake --unlock \
 			  --snakefile $snakemake \
 			  --configfile $config
-	fi 
+	fi
 }
 
 UnlockDir $unlock
 snakemake --snakefile $snakemake \
-            --configfile $config \
+        --configfile $config \
 	    --executor local \
-            --keep-incomplete \
-            --rerun-incomplete \
+        --keep-incomplete \
+        --rerun-incomplete \
 	    --rerun-triggers mtime \
-            --scheduler greedy \
-            --keep-going \
-            --latency-wait $latency \
-            --jobs $j
+        --scheduler greedy \
+        --keep-going \
+        --latency-wait $latency \
+        --jobs $j
 echo "Process has been completed succesfully."
