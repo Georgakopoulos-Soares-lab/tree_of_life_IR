@@ -12,7 +12,7 @@
 
 SCHEDULE=$1
 PATTERN=${2:-"IR"}
-BID=${3:-287}
+BID=${3:-288}
 LAST_BID=$((BID - 1))
 OUTDIR=$SCRATCH/"nonbdna_data_extractions"
 level=${4:-2}

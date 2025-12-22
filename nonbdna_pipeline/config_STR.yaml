@@ -1,5 +1,7 @@
-schedule: 'schedule_RTR.json'
-indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_STR'
+# schedule: 'schedule_RTR.json'
+# indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_STR'
+schedule: 'schedule_288_normal.json'
+indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_12-13-2025_STR/'
 partition_col: 'sru'
 min_partition: 1
 max_spacer: 100

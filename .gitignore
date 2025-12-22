@@ -3,6 +3,7 @@
 *png
 *pdf
 *.json
+*.log
 *.out
 *.err
 *.yaml

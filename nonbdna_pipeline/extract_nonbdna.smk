@@ -4,7 +4,8 @@ from collections import defaultdict
 from minditool import MindiTool
 from validate_pipeline import validate_pipeline, load_schedule
 
-configfile: "config_STR.yaml"
+configfile: "config_IR.yaml"
+# configfile: "config_STR.yaml"
 schedule = Path(config["schedule"]).resolve()
 if not schedule.is_file():
     raise FileNotFoundError(f"Schedule file {schedule} does not exist.")

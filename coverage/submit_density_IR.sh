@@ -3,6 +3,7 @@
 #SBATCH -J DensityNonB
 #SBATCH --time=48:00:00
 #SBATCH -N 3
+#SBATCH -A BCS25073
 #SBATCH -n 432
 #SBATCH -p gg
 #SBATCH --output=density_IR_log/density_%j_%x_%a.out
@@ -32,6 +33,8 @@ echo "Total buckets: $BID"
 echo "Last bucket id: $LAST_BID"
 echo "Pattern: $PATTERN"
 echo "Initializing process..."
+
+module load gcc
 
 if [[ ! -n $SSH_CONNECTION ]];
 then

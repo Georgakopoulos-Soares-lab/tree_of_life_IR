@@ -1,5 +1,7 @@
-schedule: 'schedule_RTR.json'
-indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_IR'
+schedule: 'schedule_288_normal.json'
+indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_12-11-2025_IR'
+# schedule: '/work/10904/nikolchanchan/vista/tree_of_life_IR/nonbdna_pipeline/schedule_shuffled_IR_1000_10801_288_buckets.json'
+# indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_shuffled_level_12-12-2025_2_IR'
 partition_col: 'spacer_length'
 min_partition: 0
 max_partition: 9

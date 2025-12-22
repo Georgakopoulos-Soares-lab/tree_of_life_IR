@@ -2,6 +2,7 @@
 
 #SBATCH --time=48:00:00
 #SBATCH -p gg
+#SBATCH -A BCS25073
 #SBATCH -N 1
 #SBATCH -J SnakemakeNikol
 
@@ -41,7 +42,6 @@ else
 	snakemake --snakefile $snakemake \
             --configfile $config \
             --rerun-incomplete \
-	    --rerun-triggers mtime \
             --reason \
             --keep-going \
             --jobs $j \
@@ -50,8 +50,10 @@ else
             --cluster "sbatch -p {cluster.partition} \
                 -t {cluster.time} \
                 -N {cluster.nodes} \
+		-A BCS25073 \
 		-p {cluster.partition} \
                 -J {cluster.jobName} \
                 -o MindiBootstrapJobDetails/{cluster.jobName}-%x-%j.out \
                 -e MindiBootstrapJobDetails/{cluster.jobName}-%x-%j.err"
+	   # --rerun-triggers mtime \
 fi

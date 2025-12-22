@@ -2,8 +2,8 @@
 
 #SBATCH -J SnakeBootstrapDomainLevel
 #SBATCH --time=48:00:00
-#SBATCH -N 3
-#SBATCH -n 432
+#SBATCH -N 1
+#SBATCH -n 144
 #SBATCH -p gg
 #SBATCH -A BCS25073
 #SBATCH --output=bootstrap_domain_log/bootstrap_domain_%j_%x.out
@@ -29,12 +29,13 @@ function UnlockDir() {
 UnlockDir $unlock
 snakemake --snakefile $snakemake \
         --configfile $config \
-	    --executor local \
         --keep-incomplete \
         --rerun-incomplete \
-	    --rerun-triggers mtime \
+	--rerun-triggers mtime \
         --scheduler greedy \
         --keep-going \
         --latency-wait $latency \
-        --jobs $j
+	--cluster 'sbatch -N 1 -n 144 -p gg --time=48:00:00 -A BCS25073' \
+        --jobs 36
+	# --executor slurm \
 echo "Process has been completed succesfully."

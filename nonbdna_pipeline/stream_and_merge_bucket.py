@@ -178,7 +178,6 @@ class StreamAndMerge:
                 df_collection = dict()
                 df.loc[:, "sequence"] = df["sequence"].str.lower()
                 nucleotides = {"a", "g", "c", "t"}
-                df = df[df["sequence_of_arm"].apply(lambda x: all(i in nucleotides for i in x))].reset_index(drop=True)
                 if pattern == "STR":
                     df = df[(df["consensus_repeats"] >= self.min_consensus_repeats) \
                                 & (df["sequence_length"] >= self.min_sequence_length) \
@@ -198,6 +197,8 @@ class StreamAndMerge:
                     df = df[(df["spacer_length"] <= self.max_spacer) & (df["arm_length"] >= self.min_arm_length)].reset_index(drop=True)
                 else:
                     raise ValueError(f"Invalid pattern detected: {pattern}.")
+                if df.shape[0] > 0:
+                    df = df[df["sequence_of_arm"].apply(lambda x: all(i in nucleotides for i in x))].reset_index(drop=True)
                 if df.shape[0] < shape_before:
                     print(colored(f"Warning! Df shape was altered from {shape_before} to {df.shape[0]}.", "red"))
                 if df.shape[0] == 0:
