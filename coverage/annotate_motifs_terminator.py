@@ -77,18 +77,18 @@ def annotate_motifs(
     # GFF_FIELDS = ["chrom", "ann_start", "ann_end", "strand", "gene_length", "biotype"]
     e = GFFExtractor(compartments=["gene"])
     TERMINATOR_KB = 50
-    for gff_file in tqdm(gff_files, leave=True):
-        accession_id = extract_id(gff_file)
-        if accession_id not in motif_mapping:
+    for infile in tqdm(genome_files, leave=True):
+        accession_id = extract_id(infile)
+        if accession_id not in gff_files:
             print(f"Skipping {accession_id}.")
             continue
 
         # fetch genome
-        infile = Path(genome_files[accession_id])
-        accession_name = infile.name.split(".fna")[0]
+        accession_name = Path(infile).name.split(".fna")[0]
         fasta = Fasta(infile).extract_gs()
 
         # load gff
+        gff_file = gff_files[accession_id]
         gff_table = e.read_gff(gff_file, overload_biotype=False, parse_ID=True)
         gff_table = gff_table.with_columns(
             pl.col("seqID")
