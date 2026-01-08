@@ -44,12 +44,14 @@ rule all:
         "%s/density/density_data_merged_1_%s.txt" % (indir, pattern),
         expand("%s/density/density_data_merged_1_%s_{rank}.txt" % (indir, pattern),
                rank=ranks)
+        
+        print("hello")
 
 rule merge_extractions:
     input:
         expand([
             "%s/status/bucket_{bucket_id}_status.completed" % indir,
-            "%s/log_debug_nonbdna/mindi_tool_{bucket_id}.log" % indir], 
+            "%s/log_debug_nonbdna/mindi_tool_{bucket_id}.log" % indir],
                bucket_id=range(total_buckets))
     output:
         "%s/merged/%s/bucket_{bucket_id}_%s_merged.tsv.gz" % (indir, pattern, pattern),
