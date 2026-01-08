@@ -187,8 +187,6 @@ def main():
     parser.add_argument("schedule", type=str)
     parser.add_argument("--bucket_id", type=int, default=0)
     parser.add_argument("--design", type=str)
-    parser.add_argument("--data", type=str, default="genomes")
-    parser.add_argument("--motifs", type=str, default="motifs_IR")
     parser.add_argument("--outdir", type=str, default="annotated_motifs")
     args = parser.parse_args()
     # download_gff(data=args.data)
