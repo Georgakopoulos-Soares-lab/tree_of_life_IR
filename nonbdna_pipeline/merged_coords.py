@@ -7,13 +7,13 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Calculate total bases using pyranges for different GC thresholds")
     parser.add_argument("--indir", "-i", type=str, required=True, help="Input directory containing TSV files")
-    parser.add_argument("--outdir", "-o", type=str, default="merged_output", help="Output directory")
+    # parser.add_argument("--outdir", "-o", type=str, default="merged_output", help="Output directory")
     parser.add_argument("--pattern", "-p", type=str, default="IR")
 
     args = parser.parse_args()
 
     indir = Path(args.indir)
-    outdir = Path(args.outdir)
+    outdir = indir.parent.joinpath(f"summary_{args.pattern}")
     outdir.mkdir(exist_ok=True, parents=True)
 
     infiles = [infile for infile in indir.glob(f"*_genomic_{args.pattern}.processed.tsv")]
@@ -23,10 +23,7 @@ def main():
     extract_id = lambda x: "_".join(Path(x).name.split("_")[:2])
     for infile in tqdm(infiles, desc="Processing files"):
         df = pd.read_csv(infile, sep='\t')
-
-        # Calculate GC content of arms
         df["gc_arm"] = df["sequence_of_arm"].str.lower().str.count("[gc]") / df["arm_length"]
-
         for threshold in gc_thresholds:
             df_filtered = df[df["gc_arm"] >= threshold].copy()
 
@@ -40,7 +37,7 @@ def main():
                     ends=df_filtered["end"]
                 )
                 gr_merged = gr.merge()
-                total_bases = (gr_merged.ends - gr_merged.starts).sum()
+                total_bases = (gr_merged.df['End'] - gr_merged.df['Start']).sum()
                 num_regions = len(gr_merged)
 
             results.append({
@@ -56,8 +53,8 @@ def main():
 
     # Save results to CSV
     results_df = pd.DataFrame(results)
-    output_file = outdir / "merged_coords_summary.csv"
-    results_df.to_csv(output_file, index=False)
+    output_file = outdir / f"merged_coords_summary_{args.pattern}.tsv"
+    results_df.to_csv(output_file, index=False, sep="\t")
 
     print(f"\nResults saved to: {output_file}")
 if __name__ == "__main__":
