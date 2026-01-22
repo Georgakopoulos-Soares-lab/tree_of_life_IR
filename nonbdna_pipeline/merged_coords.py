@@ -3,23 +3,7 @@ import pandas as pd
 import polars as pl
 from pathlib import Path
 from tqdm import tqdm
-
-nucleotides = {"a", "g", "c", "t"}
-def sanitize_df(motif_df: pl.DataFrame) -> pl.DataFrame:
-    motif_df = (
-      motif_df
-        .with_columns(
-            sequence=pl.col("sequence").str.to_lowercase(),
-            sequence_of_arm=pl.col("sequence_of_arm").str.to_lowercase()
-        )
-        .filter(
-          pl.col("sequence")
-            .map_elements(lambda seq: all(n in nucleotides for n in seq),
-                          return_dtype=pl.Boolean)
-            )
-       )
-    return motif_df
-
+from sanitize import sanitize_df
 # motif_shuffled_df = sanitize_df(motif_shuffled_df)
 def main():
     import argparse

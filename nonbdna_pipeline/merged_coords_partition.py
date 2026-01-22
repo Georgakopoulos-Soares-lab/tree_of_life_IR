@@ -4,6 +4,7 @@ from pathlib import Path
 from termcolor import colored
 from tqdm import tqdm
 from sanitize import sanitize_df
+from fetch_validated import Validated
 
 def main():
     import argparse
@@ -36,11 +37,15 @@ def main():
     outdir = indir / f"summary_{args.pattern}"
     outdir.mkdir(exist_ok=True, parents=True)
 
-    infiles = [infile for infile in indir.glob(f"*_genomic_{args.pattern}.processed.tsv")]
-    print(colored(f"Total files: {len(infiles)}", "green"))
-    results = []
-
+    # Filter files
+    validated = Validated(indir=args.indir, pattern=args.pattern)
+    validated.fetch_validated()
+    validated_files = validated.read()
     extract_id = lambda x: "_".join(Path(x).name.split("_")[:2])
+    infiles = [infile for infile in indir.glob(f"*_genomic_{args.pattern}.processed.tsv") if extract_id(infile) in validated_files]
+    print(colored(f"Total files: {len(infiles)}", "green"))
+    # Process
+    results = []
     for infile in tqdm(infiles, desc="Processing files"):
         df = pd.read_csv(infile, sep='\t')
         accession_id = extract_id(infile)
@@ -106,6 +111,7 @@ def main():
         how="left"
     )
     results_df.loc[:, f"density_{args.pattern}"] = 1e3 * results_df[f"total_bases_{args.pattern}"] / results_df["genome_size"]
+    results_df.loc[:, f"density_{args.pattern}_ungapped"] = 1e3 * results_df[f"total_bases_{args.pattern}"] / results_df["genome_size_ungapped"]
     output_file = outdir / f"extractions_{args.pattern}_merged.tsv"
     results_df.to_csv(output_file, index=False, sep="\t")
     print(f"\nDetailed partition matrix saved to: {output_file}.")
