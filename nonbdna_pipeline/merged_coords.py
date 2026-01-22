@@ -49,7 +49,7 @@ def main():
                 'avg_region_length': total_bases / num_regions if num_regions > 0 else 0
             })
 
-            print(f"{infile.name} - GC≥{threshold}: {num_regions} regions, {total_bases:,} total bases")
+            # print(f"{infile.name} - GC≥{threshold}: {num_regions} regions, {total_bases:,} total bases")
 
     # Save results to CSV
     results_df = pd.DataFrame(results)
