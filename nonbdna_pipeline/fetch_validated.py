@@ -10,7 +10,7 @@ class Validated:
         self.indir = Path(indir).resolve()
         if not self.indir.is_dir():
             raise PipelineIncomplete()
-        self.debug_dir = self.indir.joinpath("log_debug_dna")
+        self.debug_dir = self.indir.joinpath("log_debug_nonbdna")
         if not self.debug_dir.is_dir():
             raise PipelineIncomplete()
         self.pattern = pattern
