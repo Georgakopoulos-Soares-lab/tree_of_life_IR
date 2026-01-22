@@ -1,8 +1,26 @@
 import pyranges as pr
 import pandas as pd
+import polars as pl
 from pathlib import Path
 from tqdm import tqdm
 
+nucleotides = {"a", "g", "c", "t"}
+def sanitize_df(motif_df: pl.DataFrame) -> pl.DataFrame:
+    motif_df = (
+      motif_df
+        .with_columns(
+            sequence=pl.col("sequence").str.to_lowercase(),
+            sequence_of_arm=pl.col("sequence_of_arm").str.to_lowercase()
+        )
+        .filter(
+          pl.col("sequence")
+            .map_elements(lambda seq: all(n in nucleotides for n in seq),
+                          return_dtype=pl.Boolean)
+            )
+       )
+    return motif_df
+
+# motif_shuffled_df = sanitize_df(motif_shuffled_df)
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Calculate total bases using pyranges for different GC thresholds")
@@ -13,7 +31,7 @@ def main():
     args = parser.parse_args()
 
     indir = Path(args.indir)
-    outdir = indir.parent.joinpath(f"summary_{args.pattern}")
+    outdir = indir.joinpath(f"summary_{args.pattern}")
     outdir.mkdir(exist_ok=True, parents=True)
 
     infiles = [infile for infile in indir.glob(f"*_genomic_{args.pattern}.processed.tsv")]
@@ -22,10 +40,11 @@ def main():
     results = []
     extract_id = lambda x: "_".join(Path(x).name.split("_")[:2])
     for infile in tqdm(infiles, desc="Processing files"):
-        df = pd.read_csv(infile, sep='\t')
-        df["gc_arm"] = df["sequence_of_arm"].str.lower().str.count("[gc]") / df["arm_length"]
+        df = pl.read_csv(infile, separator='\t')
+        df = sanitize_df(df).to_pandas()
+        df["gc_content"] = df["sequence_of_arm"].str.lower().str.count("[gc]") / df["arm_length"]
         for threshold in gc_thresholds:
-            df_filtered = df[df["gc_arm"] >= threshold].copy()
+            df_filtered = df[df["gc_content"] >= threshold].copy()
 
             if len(df_filtered) == 0:
                 total_bases = 0
