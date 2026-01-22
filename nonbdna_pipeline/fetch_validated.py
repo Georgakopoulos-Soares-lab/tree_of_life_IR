@@ -1,12 +1,13 @@
+from pathlib import Path
+from subprocess import run
+from termcolor import colored
+
 class PipelineIncomplete(Exception):
     pass
 
 class Validated:
 
     def __init__(self, indir: str, pattern: str):
-        from pathlib import Path
-        from subprocess import run
-        from termcolor import colored
         self.indir = Path(indir).resolve()
         if not self.indir.is_dir():
             raise PipelineIncomplete()
