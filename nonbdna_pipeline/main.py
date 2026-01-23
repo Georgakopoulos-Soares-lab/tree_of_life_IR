@@ -54,7 +54,7 @@ if __name__ == "__main__":
                   open(subdir.joinpath(f"bucket_{args.bucket_id}_mode_{m}_empty.tsv"), mode="w", encoding="UTF-8")
     # Start
     for i, accession in enumerate(accessions, 1):
-        logging.info(f"Processing accession: {accession}. Progress: {(i-1) * 1e2 / total_accessions:.2f}% (BucketID: {args.bucket_id}).")
+        logging.info(f"Processing accession: {accession}. Progress: {(i-1) * 1e2 / total_accessions:.2f}% (Bucket ID: {args.bucket_id}).")
         hunter = MindiTool(tempdir=outdir)
         result = hunter.extract(accession, 
                                 pattern=args.pattern)

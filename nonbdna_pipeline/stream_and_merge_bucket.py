@@ -51,18 +51,6 @@ class StreamAndMerge:
             return json.load(f)[str(bucket_id)]
 
     @staticmethod
-    def is_square_free(seq: str) -> bool:
-        if seq == ".":
-            return None
-        return re.search(r"([agct]+)\1", seq) is None
-
-    @staticmethod
-    def is_cubic_free(seq: str) -> bool:
-        if seq == ".":
-            return None
-        return re.search(r"([agct]+)\1\1", seq) is None
-
-    @staticmethod
     def detect_STR_coverage(seq: str) -> float:
         """
         Returns the STR that coverages the most of sequence.
@@ -78,7 +66,7 @@ class StreamAndMerge:
             for i in range(start, end):
                 covered[i] = 1
         return sum(covered) # / len(seq) if seq else 0.0
-    
+
     def load_log(self, bucket_id: int, pattern: str) -> list[str]:
         extract_id = lambda accession: "_".join(Path(accession).name.split("_")[:2])
         log_file = self.log_indir.joinpath(f"mindi_tool_{bucket_id}.log")
@@ -130,14 +118,15 @@ class StreamAndMerge:
         print(colored(f"Total empty files detected: {len(empty_files)} for pattern {pattern} (bucket_id {bucket_id}).", "green"))
         return empty_files
 
-    def merge_bucket(self, bucket_id: str, 
-                    pattern: str, 
+    def merge_bucket(self, bucket_id: str,
+                    pattern: str,
                     partition_col: Optional[str] = None,
                     min_partition: Optional[int] = None,
                     max_partition: Optional[int] = None,
                     assembly_summary: Optional[str] = None,
                     multiplier: float = 1e3) -> None:
         """Merge coordinates and calculate density."""
+
         # files = self.load_bucket(bucket_id)
         files = self.load_log(bucket_id, pattern)
         merge_outdir = self.merge_outdir.joinpath(pattern)
@@ -150,20 +139,20 @@ class StreamAndMerge:
         empty_files = set(self.load_empty(bucket_id, pattern))
         found_empty = set()
         density_df = defaultdict(list)
+
         # Process sub-divisions of dataframes
         if pattern == "MR":
             subsets = [pattern, "HDNA", "GT"]
         else:
             subsets = [pattern]
-        # START >
-        with gzip.open(outfile_normal, "wt") as f1, \
-             gzip.open(outfile, "wt") as f2, \
-             gzip.open(outfile_empty, "wt") as f3:
+
+        with gzip.open(outfile_normal, "wt") as f1, gzip.open(outfile, "wt") as f2, gzip.open(outfile_empty, "wt") as f3:
             f3.write("#assembly_accession\n")
-            if not partition_col:
-                f2.write("seqID\tstart\tend\toverlapping\tpattern\taccession_id\n")
-            else:
-                f2.write("seqID\tstart\tend\toverlapping\tpattern\tpartition_col\taccession_id\n")
+            # if not partition_col:
+            #     f2.write("seqID\tstart\tend\toverlapping\tpattern\taccession_id\n")
+            # else:
+            f2.write("seqID\tstart\tend\toverlapping\tpattern\taccession_id\tpartition_col\n")
+
             for i, file in tqdm(enumerate(files, 1), total=len(files)):
                 # dest_file = MindiTool.extract_name(file) + ".processed.merged.tsv"
                 accession_id = MindiTool.extract_id(file)
@@ -179,17 +168,20 @@ class StreamAndMerge:
                 df.loc[:, "sequence"] = df["sequence"].str.lower()
                 nucleotides = {"a", "g", "c", "t"}
                 if pattern == "STR":
-                    df = df[(df["consensus_repeats"] >= self.min_consensus_repeats) \
-                                & (df["sequence_length"] >= self.min_sequence_length) \
-                                & (df["sru"] <= 9) \
+                    mask = (
+                            (df["consensus_repeats"] >= self.min_consensus_repeats)
+                                # & (df["sequence_length"] >= self.min_sequence_length)
+                                & (df["sru"] <= 9)
                                 & (df["sru"] >= 1)
-                            ].reset_index(drop=True)
+                            )
+                    df = df[mask].reset_index(drop=True)
                     df_collection["STR"] = df
+
                 elif pattern == "IR" or pattern == "DR":
                     if isinstance(self.min_arm_length ,int) and isinstance(self.max_spacer, int):
                         df = df[(df["spacer_length"] <= self.max_spacer) & (df["arm_length"] >= self.min_arm_length)].reset_index(drop=True)
-                    elif isinstance(self.min_arm_length ,int):
-                        df = df[(df["arm_length"] >= self.min_arm_length)].reset_index(drop=True)   
+                    elif isinstance(self.min_arm_length, int):
+                        df = df[(df["arm_length"] >= self.min_arm_length)].reset_index(drop=True)
                     elif isinstance(self.max_spacer, int):
                         df = df[(df["spacer_length"] <= self.max_spacer)].reset_index(drop=True)
                     df_collection[pattern] = df
@@ -197,12 +189,15 @@ class StreamAndMerge:
                     df = df[(df["spacer_length"] <= self.max_spacer) & (df["arm_length"] >= self.min_arm_length)].reset_index(drop=True)
                 else:
                     raise ValueError(f"Invalid pattern detected: {pattern}.")
+
+                # Remove rows with non-nucleotide characters in the arm sequence
                 if df.shape[0] > 0:
                     df = df[df["sequence_of_arm"].apply(lambda x: all(i in nucleotides for i in x))].reset_index(drop=True)
                 if df.shape[0] < shape_before:
                     print(colored(f"Warning! Df shape was altered from {shape_before} to {df.shape[0]}.", "red"))
+
+                # Register empty file
                 if df.shape[0] == 0:
-                    # assert accession_id in empty_files, f"Accession {accession_id} was not found empty but it is?"
                     if accession_id not in empty_files:
                         print(colored(f"Warning! Accession {accession_id} was not found empty but it is?", "red"))
                     found_empty.add(accession_id)
@@ -212,10 +207,11 @@ class StreamAndMerge:
                             density_df["accession_id"].append(accession_id)
                             density_df["total_bp"].append(0)
                             density_df["pattern"].append(pattern)
-                            density_df["bucket_id"].append(bucket_id) # irrelevant metadata
+                            density_df["bucket_id"].append(bucket_id)
                             density_df["partition_col"].append(partition_col)
                             density_df["partition"].append(partition)
                     continue
+
                 # In case of MR, calculate H-DNA
                 if pattern == "MR":
                     assert df[df["arm_length"] != df["sequence_of_arm"].apply(len)].shape[0] == 0
@@ -223,37 +219,26 @@ class StreamAndMerge:
                     df.loc[:, "ga_proportion"] = (df["sequence_of_arm"].str.count("g|a")).div(df["arm_length"])
                     df.loc[:, "gt_proportion"] = (df["sequence_of_arm"].str.count("g|t")).div(df["arm_length"])
                     df.loc[:, "at_proportion"] = (df["sequence_of_arm"].str.count("a|t")).div(df["arm_length"])
-                    df.loc[:, "square_free"] = df["sequence"].apply(StreamAndMerge.is_square_free).astype(int)
-                    df.loc[:, "cubic_free"] = df["sequence"].apply(StreamAndMerge.is_cubic_free).astype(int)
-                    # df.loc[: "sequence_STR_coverage"] = df["sequence"].apply(StreamAndMerge.detect_STR_coverage)
-                    # df.loc[: "arm_STR_coverage"] = df["sequence_of_arm"].apply(StreamAndMerge.detect_STR_coverage)
-                    # df.loc[: "spacer_STR_coverage"] = df["sequence_of_spacer"].apply(StreamAndMerge.detect_STR_coverage)
                     # Calculate H-DNA and GT threshold
-                    # # # #
                     # H-DNA Calculation
-                    df.loc[:, "is_HDNAmr"] = (((df["ga_proportion"] >= self.GA_threshold) | (df["ga_proportion"] < 1 - self.GA_threshold)) & (df["at_proportion"] < self.AT_threshold)).astype(int)
-                    df.loc[:, "HDNAmr_strand"] = (df["ga_proportion"] >= 0.5).astype(int).apply(lambda x: "+" if x == 1 else "-")
-                    # # # # 
+                    df.loc[:, "is_HDNA"] = (((df["ga_proportion"] >= self.GA_threshold) | (df["ga_proportion"] < 1 - self.GA_threshold)) & (df["at_proportion"] < self.AT_threshold)).astype(int)
+                    df.loc[:, "HDNA_strand"] = (df["ga_proportion"] >= 0.5).astype(int).apply(lambda x: "+" if x == 1 else "-")
+
                     # GT Calculation
-                    df.loc[:, "is_GTmr"] = (((df["gt_proportion"] >= self.GT_threshold) | (df["gt_proportion"] < 1 - self.GT_threshold)) & (df["at_proportion"] < self.AT_threshold)).astype(int)
-                    df.loc[:, "GTmr_strand"] = (df["gt_proportion"] >= 0.5).astype(int).apply(lambda x: "+" if x == 1 else "-")
-                    # # # #
-                    # # # # # # # ##
+                    df.loc[:, "is_GT"] = (((df["gt_proportion"] >= self.GT_threshold) | (df["gt_proportion"] < 1 - self.GT_threshold)) & (df["at_proportion"] < self.AT_threshold)).astype(int)
+                    df.loc[:, "GT_strand"] = (df["gt_proportion"] >= 0.5).astype(int).apply(lambda x: "+" if x == 1 else "-")
+
                     df_collection["MR"] = df
-                    df_collection["HDNA"] = df[df["is_HDNAmr"] == 1].reset_index(drop=True)
-                    df_collection["GT"] = df[df["is_GTmr"] == 1].reset_index(drop=True)
-                elif pattern == "DR" or pattern == "IR":
-                    pass
-                    # df.loc[: "sequence_STR_coverage"] = df["sequence"].apply(StreamAndMerge.detect_STR_coverage)
-                    # df.loc[: "arm_STR_coverage"] = df["sequence_of_arm"].apply(StreamAndMerge.detect_STR_coverage)
-                    # df.loc[: "spacer_STR_coverage"] = df["sequence_of_spacer"].apply(StreamAndMerge.detect_STR_coverage)
+                    # df_collection["HDNA"] = df[df["is_HDNA"] == 1].reset_index(drop=True)
+                    # df_collection["GT"] = df[df["is_GT"] == 1].reset_index(drop=True)
+
                 df.loc[:, "#assembly_accession"] = accession_id
                 df.to_csv(f1, sep="\t", index=False, header=i==1)
                 for subset, df in df_collection.items():
                     df = df[usecols]
                     for partition in unique_partition:
                         total_bp = 0
-                        if partition != ".":
+                        if partition != "." and partition_col:
                             df_temp = df[df[partition_col] == partition].reset_index(drop=True)
                         else:
                             df_temp = df
@@ -261,27 +246,30 @@ class StreamAndMerge:
                             density_df["accession_id"].append(accession_id)
                             density_df["total_bp"].append(total_bp)
                             density_df["pattern"].append(subset)
-                            density_df["bucket_id"].append(bucket_id) # irrelevant metadata
+                            density_df["bucket_id"].append(bucket_id)
                             density_df["partition_col"].append(partition_col)
                             density_df["partition"].append(partition)
                             continue
+
                         # save to disk and calculate total base pairs
-                        with open(BedTool.from_dataframe(df_temp).sort().merge(c="4", o="count").fn, 
+                        with open(BedTool.from_dataframe(df_temp).sort().merge(c="4", o="count").fn,
                                 mode="r",
                                 encoding="UTF-8") as g:
                             for line in g:
                                 start, end = line.split("\t")[1:3]
                                 start, end = int(start), int(end)
                                 total_bp += end - start
-                                f2.write(line.replace("\n", f"\t{subset}\t{partition}\t{accession_id}\n"))
+                                f2.write(line.replace("\n", f"\t{subset}\t{accession_id}\t{partition}\n"))
+
                         # store density data
                         density_df["accession_id"].append(accession_id)
                         density_df["total_bp"].append(total_bp)
                         density_df["pattern"].append(subset)
-                        density_df["bucket_id"].append(bucket_id) # irrelevant metadata
+                        density_df["bucket_id"].append(bucket_id)
                         density_df["partition_col"].append(partition_col)
                         density_df["partition"].append(partition)
             density_df = pd.DataFrame(density_df)
+
             if assembly_summary is not None:
                 assembly_summary = Path(assembly_summary).resolve()
                 if assembly_summary.is_file():
@@ -325,8 +313,10 @@ if __name__ == "__main__":
     parser.add_argument("--AT_threshold", type=float, default=0.8)
     parser.add_argument("--multiplier", type=float, default=1e3)
     args = parser.parse_args()
-    merger = StreamAndMerge(schedule=args.schedule, 
-                                indir=args.indir, 
+
+
+    merger = StreamAndMerge(schedule=args.schedule,
+                                indir=args.indir,
                                 # log_indir=args.log_indir,
                                 min_consensus_repeats=args.min_consensus_repeats,
                                 min_arm_length=args.min_arm_length,
@@ -337,10 +327,10 @@ if __name__ == "__main__":
                                 AT_threshold=args.AT_threshold)
     # logged_files = merger.load_log(args.bucket_id, args.pattern)
     # empty_files = merger.load_empty(args.bucket_id, args.pattern)
-    merger.merge_bucket(bucket_id=args.bucket_id, 
-                        pattern=args.pattern, 
-                        partition_col=args.partition_col, 
-                        min_partition=args.min_partition, 
+    merger.merge_bucket(bucket_id=args.bucket_id,
+                        pattern=args.pattern,
+                        partition_col=args.partition_col,
+                        min_partition=args.min_partition,
                         max_partition=args.max_partition,
                         assembly_summary=args.assembly_summary,
                         multiplier=args.multiplier)

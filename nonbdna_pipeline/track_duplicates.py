@@ -20,7 +20,9 @@ def load_groups():
     return assembly_groups
 
 def filter_duplicated_assemblies():
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(asctime)s:%(message)s", filename="assembly.log")
+    logging.basicConfig(level=logging.INFO, 
+                        format="%(levelname)s:%(asctime)s:%(message)s", 
+                        filename="assembly_NIKOL.log")
     assemblies = [accession for accession in Path("files").resolve().glob("*.fna.gz")]
 
     extract_id = lambda accession: '_'.join(Path(accession).name.split("_")[:2])
@@ -31,7 +33,6 @@ def filter_duplicated_assemblies():
 
     gff_files = {extract_id(gff): gff for gff in Path("files").resolve().glob("*.gff.gz")}
     seen_accessions = {}
-    seen_versions = {}
     total_assemblies = len(assemblies)
     total_assemblies_replaced = 0
 
@@ -52,7 +53,6 @@ def filter_duplicated_assemblies():
             old_version = extract_version(existing_id)
 
             # # # # # # # # # # # # # # # # # # # # # 
-
             # replace the existing accession with the new accession in one of the following scenarions:
             # - the existing accession is from genbank and the new accession is from refseq | Reason: refseq has more enriched GFF features
             # - the existing accession is from genbank and the new accession (either from genbank or from refseq) has a more latest version and the existing
@@ -62,6 +62,10 @@ def filter_duplicated_assemblies():
                 seen_accessions.update({unique_id: str(accession)})
                 total_assemblies_replaced += 1
             elif existing_id.startswith("GCA_") and old_version < current_version:
+                logging.info(f"Replacing assembly {existing_id} with {accession_id} (Reason: replacing latest version {old_version} ---> {current_version}).")
+                seen_accessions.update({unique_id: str(accession)})
+                total_assemblies_replaced += 1
+            elif existing_id.startswith("GCF_") and accession_id.startswith("GCF_") and old_version < current_version:
                 logging.info(f"Replacing assembly {existing_id} with {accession_id} (Reason: replacing latest version {old_version} ---> {current_version}).")
                 seen_accessions.update({unique_id: str(accession)})
                 total_assemblies_replaced += 1

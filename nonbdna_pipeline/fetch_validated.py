@@ -1,13 +1,13 @@
 from pathlib import Path
 from subprocess import run
 from termcolor import colored
+from stream_and_merge import StreamAndMerge
 
 class PipelineIncomplete(Exception):
     pass
 
-class Validated:
-
-    def __init__(self, indir: str, pattern: str):
+class StreamValidated(StreamAndMerge):
+    def __init__(self, indir: str, pattern: str) -> None:
         self.indir = Path(indir).resolve()
         if not self.indir.is_dir():
             raise PipelineIncomplete()
@@ -15,9 +15,9 @@ class Validated:
         if not self.debug_dir.is_dir():
             raise PipelineIncomplete()
         self.pattern = pattern
-        self.product = Path(f"processed_succesfully_accessions_{pattern}.txt")
+        self.product = Path(f"_processed_succesfully_accessions_{pattern}.txt")
 
-    def fetch_validated(self):
+    def fetch_validated(self) -> None:
         run(f"cd {self.debug_dir} && cat * | grep -a 'passed all checks' | awk -F ' ' '{{ print $7 }}' > {self.product}", shell=True, check=True)
 
     def read(self) -> set[str]:
