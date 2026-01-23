@@ -4,7 +4,7 @@ import random
 import numpy as np
 from abc import abstractmethod
 import uuid
-
+from validate_schedule import validate_schedule
 class Scheduler:
     
     @abstractmethod
@@ -71,12 +71,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""""")
     parser.add_argument("--accessions_path", type=str, default='filtered_assemblies.txt')
     parser.add_argument("--total_buckets", type=int, default=2)
+    parser.add_argument("--name", type=str)
+    parser.add_argument("--accession_list", type=str)
     parser.add_argument("--use_gff", type=int, default=0)
     
     args = parser.parse_args()
     accessions_path = Path(args.accessions_path).resolve()
     total_buckets = args.total_buckets
     use_gff = args.use_gff
+    name = args.name
     accessions = []
     with open(accessions_path, mode="r") as f:
         for line in f:
@@ -93,7 +96,13 @@ if __name__ == "__main__":
     scheduler = MiniBucketScheduler()
     scheduled_files = scheduler.schedule(accessions, total_buckets=total_buckets, use_gff=use_gff)
 
-    unique_filename = str(uuid.uuid4()).replace("-", "").replace("_", "")
-    destination = f"new_schedule_{total_buckets}_{unique_filename}.json"
+    if name is None:
+        unique_filename = str(uuid.uuid4()).replace("-", "").replace("_", "")
+        destination = f"new_schedule_{total_buckets}_{unique_filename}.json"
+    else:
+        destination = f"{name}_schedule_{total_buckets}.json"
     scheduler.saveas(scheduled_files, destination)
     print(f"New schedule has been saved at {destination}.")
+
+    if args.accession_list and Path(args.accession_list).is_file():
+        validate_schedule(destination, args.accession_list)
