@@ -67,7 +67,7 @@ class StreamAndMerge:
                 covered[i] = 1
         return sum(covered) # / len(seq) if seq else 0.0
 
-    def load_log(self, bucket_id: int, pattern: str) -> list[str]:
+    def load_validated_files_from_log(self, bucket_id: int, pattern: str) -> list[str]:
         extract_id = lambda accession: "_".join(Path(accession).name.split("_")[:2])
         log_file = self.log_indir.joinpath(f"mindi_tool_{bucket_id}.log")
         extracted_ids = set()
@@ -106,6 +106,7 @@ class StreamAndMerge:
             print(colored(f"Bucket {bucket_id} is In-Complete!", "yellow"))
             assert bucket_size > len(failed_ids) + len(files), f"Invalid number of files detected."
         print(colored(f"Total extracted files detected: {len(files)} (bucket {bucket_id}).", "green"))
+        breakpoint()
         return files
 
     def load_empty(self, bucket_id: str, pattern: str) -> list[str]:
@@ -126,9 +127,7 @@ class StreamAndMerge:
                     assembly_summary: Optional[str] = None,
                     multiplier: float = 1e3) -> None:
         """Merge coordinates and calculate density."""
-
-        # files = self.load_bucket(bucket_id)
-        files = self.load_log(bucket_id, pattern)
+        files = self.load_validated_files_from_log(bucket_id, pattern)
         merge_outdir = self.merge_outdir.joinpath(pattern)
         merge_outdir.mkdir(exist_ok=True)
         outfile_normal = merge_outdir.joinpath(f"bucket_{bucket_id}_{pattern}_raw.tsv.gz")
@@ -216,9 +215,9 @@ class StreamAndMerge:
                 if pattern == "MR":
                     assert df[df["arm_length"] != df["sequence_of_arm"].apply(len)].shape[0] == 0
                     df.loc[:, "arm_length"] = df["sequence_of_arm"].apply(len)
-                    df.loc[:, "ga_proportion"] = (df["sequence_of_arm"].str.count("g|a")).div(df["arm_length"])
-                    df.loc[:, "gt_proportion"] = (df["sequence_of_arm"].str.count("g|t")).div(df["arm_length"])
-                    df.loc[:, "at_proportion"] = (df["sequence_of_arm"].str.count("a|t")).div(df["arm_length"])
+                    df.loc[:, "ga_proportion"] = (df["sequence_of_arm"].str.count("[ga]")).div(df["arm_length"])
+                    df.loc[:, "gt_proportion"] = (df["sequence_of_arm"].str.count("[gt]")).div(df["arm_length"])
+                    df.loc[:, "at_proportion"] = (df["sequence_of_arm"].str.count("[at]")).div(df["arm_length"])
                     # Calculate H-DNA and GT threshold
                     # H-DNA Calculation
                     df.loc[:, "is_HDNA"] = (((df["ga_proportion"] >= self.GA_threshold) | (df["ga_proportion"] < 1 - self.GA_threshold)) & (df["at_proportion"] < self.AT_threshold)).astype(int)
@@ -229,8 +228,8 @@ class StreamAndMerge:
                     df.loc[:, "GT_strand"] = (df["gt_proportion"] >= 0.5).astype(int).apply(lambda x: "+" if x == 1 else "-")
 
                     df_collection["MR"] = df
-                    # df_collection["HDNA"] = df[df["is_HDNA"] == 1].reset_index(drop=True)
-                    # df_collection["GT"] = df[df["is_GT"] == 1].reset_index(drop=True)
+                    df_collection["HDNA"] = df[df["is_HDNA"] == 1].reset_index(drop=True)
+                    df_collection["GT"] = df[df["is_GT"] == 1].reset_index(drop=True)
 
                 df.loc[:, "#assembly_accession"] = accession_id
                 df.to_csv(f1, sep="\t", index=False, header=i==1)

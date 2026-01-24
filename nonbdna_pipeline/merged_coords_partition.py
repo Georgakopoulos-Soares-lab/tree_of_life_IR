@@ -4,7 +4,7 @@ from pathlib import Path
 from termcolor import colored
 from tqdm import tqdm
 from sanitize import sanitize_df
-from fetch_validated import Validated
+from fetch_validated import StreamValidated
 
 def main():
     import argparse
