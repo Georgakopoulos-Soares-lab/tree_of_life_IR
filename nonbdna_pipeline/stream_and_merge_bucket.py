@@ -106,7 +106,6 @@ class StreamAndMerge:
             print(colored(f"Bucket {bucket_id} is In-Complete!", "yellow"))
             assert bucket_size > len(failed_ids) + len(files), f"Invalid number of files detected."
         print(colored(f"Total extracted files detected: {len(files)} (bucket {bucket_id}).", "green"))
-        breakpoint()
         return files
 
     def load_empty(self, bucket_id: str, pattern: str) -> list[str]:
@@ -169,7 +168,7 @@ class StreamAndMerge:
                 if pattern == "STR":
                     mask = (
                             (df["consensus_repeats"] >= self.min_consensus_repeats)
-                                # & (df["sequence_length"] >= self.min_sequence_length)
+                                & ((df["sru"] == 3) | (df["sequence_length"] >= self.min_sequence_length))
                                 & (df["sru"] <= 9)
                                 & (df["sru"] >= 1)
                             )
@@ -205,7 +204,7 @@ class StreamAndMerge:
                         for partition in unique_partition:
                             density_df["accession_id"].append(accession_id)
                             density_df["total_bp"].append(0)
-                            density_df["pattern"].append(pattern)
+                            density_df["pattern"].append(subset)
                             density_df["bucket_id"].append(bucket_id)
                             density_df["partition_col"].append(partition_col)
                             density_df["partition"].append(partition)

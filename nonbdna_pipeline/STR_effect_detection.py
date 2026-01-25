@@ -33,7 +33,7 @@ if __name__ == "__main__":
     bucket_id = args.bucket_id 
     partition_col = args.partition
 
-    IR_parent = Path("extractions_IR")
+    IR_parent = Path(f"extractions_{pattern}")
     STR_parent = Path("extractions_STR")
     extract_id = lambda x: "_".join(Path(x).name.split("_")[:2])
     extract_name = lambda x: Path(x).name.split(".fna")[0]
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     for file in tqdm(files):
         file = Path(file)
         name = extract_name(file)
-        IR_file = IR_parent / f"{name}_IR.tsv.gz"
+        IR_file = IR_parent / f"{name}_{pattern}.tsv.gz"
         STR_file = STR_parent / f"{name}_STR.tsv.gz"
         if not STR_file.is_file() or not IR_file.is_file():
             print(file)
