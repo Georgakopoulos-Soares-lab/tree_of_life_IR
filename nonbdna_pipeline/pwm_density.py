@@ -184,7 +184,6 @@ class PWMExtractor:
             origin = end - window_size - 1
             L = max(0, window_size - (origin - motif_start))
             U = min(2 * window_size + 1, window_size - (origin - motif_end))
-
             assert L <= U
             overlap_start = max(motif_start, start)
             overlap_end = min(motif_end, end)

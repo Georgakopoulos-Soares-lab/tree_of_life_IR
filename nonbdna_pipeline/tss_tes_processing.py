@@ -145,7 +145,7 @@ class TSSTESProcessor(StreamAndMerge):
     polarities: list[str] = field(init=False, factory=lambda: ["Template", "Non-Template"])
     biotypes: list[str] = field(init=False, factory=lambda: ["protein_coding", "non_coding", "."])
     LOG_INTERVAL: int = 240
-    FIELDS: list[str] = ["#assembly_accession", "pattern", "site", "biotype", "polarity", "partition"]
+    FIELDS: list[str] = ["#assembly_accession", "pattern", "site", "biotype", "polarity", "partition", "overlapping_genes", "pct_gene", "total_genes"]
 
     def __attrs_post_init__(self) -> None:
         super().__attrs_post_init__()
@@ -240,9 +240,11 @@ class TSSTESProcessor(StreamAndMerge):
                               pseudogenes_to_genes=pseudogenes_to_genes, 
                               parse_biotype=biotype,
                               filter_on="gene")
-            if gff_df.shape[0] == 0:
+            total_genes = gff_df.shape[0]
+            if total_genes == 0:
                 logging.warning(f"No features found in GFF file `{gff_file}`. Skipping.")
                 continue 
+            
             df = df.rename(columns={"seqID": "Chromosome", 
                                     "start": "Start", 
                                     "end": "End", 
@@ -279,6 +281,9 @@ class TSSTESProcessor(StreamAndMerge):
                             "site": site,
                             "biotype": ".",
                             "partition": str(partition),
+                            "overlapping_genes": 0,
+                            "pct_gene": 0.0,
+                            "total_genes": total_genes
                         }
                         if polarity:
                             for charge in self.polarities:
@@ -302,11 +307,16 @@ class TSSTESProcessor(StreamAndMerge):
                     else:
                         density_df = pwm.extract_density(df_partitioned, window_size=self.window_size)
 
+                    gene_overlap = df_joined.drop_duplicates(subset=["seqID", "start", "end"]).shape[0]
+                    pct_gene_overlap = round(1e2 * gene_overlap / total_genes, 2)
                     data = {"#assembly_accession": accession_id,
                             "pattern": pattern,
                             "site": site,
                             "biotype": ".",
-                            "partition": str(partition)
+                            "partition": str(partition),
+                            "overlapping_genes": gene_overlap,
+                            "pct_gene": pct_gene_overlap,
+                            "total_genes": total_genes
                     }
                     if polarity:
                         for charge in self.polarities:
@@ -324,19 +334,26 @@ class TSSTESProcessor(StreamAndMerge):
             assembly_summary = Path(assembly_summary).resolve()
             # headers = list(pd.read_table("headers.txt").columns)
             try:
-                assembly_df = pd.read_table(assembly_summary, usecols=["#assembly_accession", 
-                                                                   "species_taxid", 
-                                                                   "organism_name",
-                                                                   "phylum", 
-                                                                   "kingdom", 
-                                                                   "domain", 
-                                                                   "total_gene_count", 
-                                                                   "protein_coding_gene_count", 
-                                                                   "non_coding_gene_count",
-                                                                   "gc_percent", 
-                                                                   "genome_size"])
+                assembly_df = pd.read_table(assembly_summary, 
+                                            dtype={"species_taxid": int,
+                                                   "gc_percent": float,
+                                                   "genome_size": int},
+
+                                            usecols=["#assembly_accession", 
+                                                    "species_taxid", 
+                                                    "organism_name",
+                                                    "phylum", 
+                                                    "kingdom", 
+                                                    "domain", 
+                                                    "total_gene_count", 
+                                                    "protein_coding_gene_count", 
+                                                    "non_coding_gene_count",
+                                                    "gc_percent", 
+                                                    "genome_size"]
+                                                                   )
             except Exception as e:
                 logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
+                print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
                 return
             density_df = pd.read_table(outfile)
             density_df = density_df\
@@ -347,7 +364,7 @@ class TSSTESProcessor(StreamAndMerge):
                                     how="left"
                         )
             merged_outfile = self.outdir.joinpath(f"tss_tes_density_{pattern}_bucket_{bucket_id}_with_assembly_data.tsv.gz")
-            density_df.to_csv(merged_outfile, sep="\t", index=False, compression="gzip")
+            density_df.to_csv(merged_outfile, mode="w", sep="\t", index=False, compression="gzip")
             logging.info(f"Merged density data with assembly summary and saved to `{merged_outfile}`.")
         logging.info(f"Process has been completed succesfully (bucket {bucket_id}).")
         return
