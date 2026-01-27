@@ -67,7 +67,7 @@ class StreamAndMerge:
                 covered[i] = 1
         return sum(covered) # / len(seq) if seq else 0.0
 
-    def load_validated_files_from_log(self, bucket_id: int, pattern: str) -> list[str]:
+    def load_validated_files_from_log(self, bucket_id: int, pattern: str, ignore_errors: bool = False) -> list[str]:
         extract_id = lambda accession: "_".join(Path(accession).name.split("_")[:2])
         log_file = self.log_indir.joinpath(f"mindi_tool_{bucket_id}.log")
         extracted_ids = set()
@@ -101,10 +101,12 @@ class StreamAndMerge:
                     files.append(extracted_file)
         if bucket_is_complete:
             print(colored(f"Bucket {bucket_id} is Complete!", "green"))
-            assert bucket_size == len(files) + len(failed_ids), f"Bucket {bucket_id} is complete, but there are missing files!"
+            if not ignore_errors:
+                assert bucket_size == len(files) + len(failed_ids), f"Bucket {bucket_id} is complete, but there are missing files!"
         else:
             print(colored(f"Bucket {bucket_id} is In-Complete!", "yellow"))
-            assert bucket_size > len(failed_ids) + len(files), f"Invalid number of files detected."
+            if not ignore_errors:
+                assert bucket_size > len(failed_ids) + len(files), f"Invalid number of files detected."
         print(colored(f"Total extracted files detected: {len(files)} (bucket {bucket_id}).", "green"))
         return files
 
@@ -268,22 +270,20 @@ class StreamAndMerge:
                         density_df["partition"].append(partition)
             density_df = pd.DataFrame(density_df)
 
-            if assembly_summary is not None:
+            if isinstance(assembly_summary, str) and Path(assembly_summary).is_file():
                 assembly_summary = Path(assembly_summary).resolve()
-                if assembly_summary.is_file():
-                    # headers = list(pd.read_table("headers.txt").columns)
-                    assembly_df = pd.read_table(assembly_summary)
-                    density_df = density_df\
-                                .merge(
-                                            assembly_df,
-                                            left_on="accession_id",
-                                            right_on="#assembly_accession",
-                                            how="left"
-                                )
-                    density_df.loc[:, f"density_ungapped_{pattern}"] = (density_df["total_bp"] * multiplier / density_df["genome_size_ungapped"]).round(3)
-                    density_df.loc[:, f"density_{pattern}"] = (density_df["total_bp"] * multiplier / density_df["genome_size"]).round(3)
-                else:
-                    print(colored(f"Failed to merge with assembly summary. Reason: provided invalid assembly summary path {assembly_summary}.", "yellow"))
+                # headers = list(pd.read_table("headers.txt").columns)
+                assembly_df = pd.read_table(assembly_summary)
+                density_df = density_df\
+                            .merge(
+                                        assembly_df,
+                                        left_on="accession_id",
+                                        right_on="#assembly_accession",
+                                        how="left"
+                            )
+                density_df.loc[:, f"density_ungapped_{pattern}"] = (density_df["total_bp"] * multiplier / density_df["genome_size_ungapped"]).round(3)
+                density_df.loc[:, f"density_{pattern}"] = (density_df["total_bp"] * multiplier / density_df["genome_size"]).round(3)
+                # print(colored(f"Failed to merge with assembly summary. Reason: provided invalid assembly summary path {assembly_summary}.", "yellow"))
             density_df.to_csv(outfile_density, compression="gzip", mode="w", sep="\t", index=False, header=True)
             assert len(empty_files) <= len(found_empty), f"Empty list was not exhausted for pattern {pattern}. Remaining files: {len(empty_files)} (bucket {bucket_id})."
             assert empty_files.issubset(found_empty), f"Empty files were not found in the log for pattern {pattern}. Remaining files: {empty_files - found_empty} (bucket {bucket_id})."
