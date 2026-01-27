@@ -273,7 +273,7 @@ class TSSTESProcessor(StreamAndMerge):
                                                                    "Strand_b": "motif_strand"})
                 # In that case, directly emit zero vectors for this site across all partitions.
                 if df_joined.shape[0] == 0:
-                    zero_vec = {locus: "0" for locus in window_range}
+                    zero_vec = {locus: 0 for locus in window_range}
                     for partition in partitions:
                         base_data = {
                             "#assembly_accession": accession_id,
@@ -320,10 +320,10 @@ class TSSTESProcessor(StreamAndMerge):
                     }
                     if polarity:
                         for charge in self.polarities:
-                            data.update({"polarity": charge} | {locus: str(int(counts)) for locus, counts in zip(window_range, density_df[charge])})
+                            data.update({"polarity": charge} | {locus: int(counts) for locus, counts in zip(window_range, density_df[charge])})
                             writer.writerow(data)
                     else:
-                        data.update({"polarity": "."} | {locus: str(int(counts)) for locus, counts in zip(window_range, density_df)})
+                        data.update({"polarity": "."} | {locus: int(counts) for locus, counts in zip(window_range, density_df)})
                         writer.writerow(data)
                 self.files_processed = file_idx
         thread.join(timeout=1)
