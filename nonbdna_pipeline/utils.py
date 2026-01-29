@@ -20,6 +20,14 @@ def parse_fasta(file: str) -> Iterator[tuple[str, str]]:
 def load_schedule(schedule: str) -> dict[int, list[str]]:
     with open(schedule, mode="r", encoding="utf-8") as f:
         return json.load(f)
+    
+def load_bucket_ids(SCHEDULE: str) -> list[int]:
+    bucket_ids = []
+    with open(SCHEDULE, mode="r", encoding="UTF-8") as f:
+        schedule = json.load(f)
+        for bucket_id in schedule:
+            bucket_ids.append(int(bucket_id))
+    return bucket_ids
 
 def load_bucket(schedule: str, bucket_id: int) -> list[str]:
     with open(schedule,  mode="r", encoding="utf-8") as f:

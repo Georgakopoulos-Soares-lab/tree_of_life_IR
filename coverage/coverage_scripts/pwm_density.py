@@ -8,8 +8,10 @@ import matplotlib.pyplot as plt
 from seaborn import color_palette
 
 class PWMExtractor:
+
     def __init__(self) -> None:
         self.nucleotides = "agct"
+
     @staticmethod
     def invert(nucleotide: str) -> str:
         match nucleotide:
@@ -23,6 +25,7 @@ class PWMExtractor:
                 return 'g'
             case _:
                 raise ValueError(f'Unknown nucleotide {nucleotide}.')
+
     def extract_template_density(self, intersect_df: pl.DataFrame, 
                                         window_size: int, 
                                         enrichment: bool = False,
@@ -159,10 +162,8 @@ class PWMExtractor:
                         return_array: bool = True,
                         return_frame: bool = False,
                         enrichment: bool = False,
-                        use_biotype: bool = False
                         ) -> list[int] | np.ndarray:
-        total_counts = {".": np.zeros(2*window_size+1)}
-        biotype = "."
+        total_counts = np.zeros(2*window_size+1)
         total_overlap = 0
         for row in intersect_df.iter_rows(named=True):
             compartment_strand = row['strand']
@@ -170,12 +171,6 @@ class PWMExtractor:
                 continue
             start = int(row['start'])
             end = int(row['end'])
-            if use_biotype:
-                biotype = row["biotype"]
-                if biotype not in total_counts:
-                    total_counts[biotype] = np.zeros(2*window_size+1)
-            else:
-                biotype = "."
             # 10 -- 21 -- 31 ] 32 = 2 * w + 10 + 2
             # if end != window_size * 2 + 2 + start:
             #    print('woops?')
@@ -189,6 +184,7 @@ class PWMExtractor:
             origin = end - window_size - 1
             L = max(0, window_size - (origin - motif_start))
             U = min(2 * window_size + 1, window_size - (origin - motif_end))
+
             assert L <= U
             overlap_start = max(motif_start, start)
             overlap_end = min(motif_end, end)
@@ -199,21 +195,22 @@ class PWMExtractor:
 
             if compartment_strand == "-":
                 temp_counts = temp_counts[::-1]
-            total_counts[biotype] += temp_counts
-        
-        # total_sum = int(np.sum(total_counts))
-        # assert total_overlap == total_sum, f"Overlap: {total_overlap} vs. Calculated overlap {total_sum}."
+            total_counts += temp_counts
+        total_sum = int(np.sum(total_counts))
+        assert total_overlap == total_sum, f"Overlap: {total_overlap} vs. Calculated overlap {total_sum}."
+
         if enrichment:
-            total_counts = {k: v / np.mean(v) for k, v in total_counts.items()}
+            total_counts = total_counts / np.mean(total_counts)
             name = "Enrichment"
         else:
             name = "Occurrences"
+
         if return_frame:
             total_counts = pl.Series(total_counts)\
                                 .to_frame(name=name)
         elif not return_array:
             total_counts = list(total_counts)
-        return total_counts if use_biotype else total_counts["."]
+        return total_counts
 
     def extract_PWM(self, 
                     intersect_df: pl.DataFrame, 

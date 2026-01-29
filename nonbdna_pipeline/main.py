@@ -1,4 +1,4 @@
-from minditool import MindiTool
+from nonbdna_pipeline.minditool import MindiTool
 from pathlib import Path
 import pandas as pd
 import logging 

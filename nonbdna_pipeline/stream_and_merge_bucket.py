@@ -7,7 +7,7 @@ from typing import Optional
 import pandas as pd
 from collections import defaultdict
 from pybedtools import BedTool
-from minditool import MindiTool
+from nonbdna_pipeline.minditool import MindiTool
 import re
 from attr import field
 import attr
@@ -120,7 +120,15 @@ class StreamAndMerge:
         print(colored(f"Total empty files detected: {len(empty_files)} for pattern {pattern} (bucket_id {bucket_id}).", "green"))
         return empty_files
 
-    def merge_bucket(self, bucket_id: str,
+    @staticmethod
+    def extract_name(x: str, pattern: str) -> str:
+        return Path(x).name.split(f"_{pattern}")[0]
+
+    @staticmethod 
+    def extract_id(x: str) -> str:
+        return "_".join(Path(x).name.split("_")[:2])
+
+    def process_bucket(self, bucket_id: str,
                     pattern: str,
                     partition_col: Optional[str] = None,
                     min_partition: Optional[int] = None,
@@ -290,13 +298,12 @@ class StreamAndMerge:
             print(colored(f"Bucket merge {bucket_id} for pattern {pattern} has completed succesfully!", "green"))
             return
 
-if __name__ == "__main__":
+def main():
     import argparse
     parser = argparse.ArgumentParser(description=""".""")
     parser.add_argument("bucket_id", type=int, default=0)
     parser.add_argument("--schedule", type=str, default="schedule_tandem_extractions.json")
     parser.add_argument("--indir", type=str, default="extractions_STR_MR")
-    # parser.add_argument("--log_indir", type=str, default="log_debug_nonbdna")
     parser.add_argument("--pattern", type=str, default="STR")
     parser.add_argument("--partition_col", type=str, default="sru")
     parser.add_argument("--min_partition", type=int, default=1)
@@ -312,23 +319,22 @@ if __name__ == "__main__":
     parser.add_argument("--multiplier", type=float, default=1e3)
     args = parser.parse_args()
 
-
-    merger = StreamAndMerge(schedule=args.schedule,
+    StreamAndMerge(schedule=args.schedule,
                                 indir=args.indir,
-                                # log_indir=args.log_indir,
                                 min_consensus_repeats=args.min_consensus_repeats,
                                 min_arm_length=args.min_arm_length,
                                 max_spacer=args.max_spacer,
                                 min_sequence_length=args.min_sequence_length,
                                 GA_threshold=args.GA_threshold,
                                 GT_threshold=args.GT_threshold,
-                                AT_threshold=args.AT_threshold)
-    # logged_files = merger.load_log(args.bucket_id, args.pattern)
-    # empty_files = merger.load_empty(args.bucket_id, args.pattern)
-    merger.merge_bucket(bucket_id=args.bucket_id,
-                        pattern=args.pattern,
-                        partition_col=args.partition_col,
-                        min_partition=args.min_partition,
-                        max_partition=args.max_partition,
-                        assembly_summary=args.assembly_summary,
-                        multiplier=args.multiplier)
+                                AT_threshold=args.AT_threshold).process_bucket(
+                                        bucket_id=args.bucket_id,
+                                        pattern=args.pattern,
+                                        partition_col=args.partition_col,
+                                        min_partition=args.min_partition,
+                                        max_partition=args.max_partition,
+                                        assembly_summary=args.assembly_summary,
+                                        multiplier=args.multiplier)
+
+if __name__ == "__main__":
+    main()

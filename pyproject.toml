@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tree-of-life-nonbdna"
+version = "0.1.0"
+description = "Non-B-DNA pipeline utilities (GFF motif coverage, stream & merge, TSS/TES processor)"
+requires-python = ">=3.10"
+authors = [{ name = "Nikol Chantzi" }]
+# Add runtime dependencies here if you want pip to install them automatically
+# dependencies = [
+#   "polars>=0.20",
+#   "pandas>=2.0",
+#   "pyranges>=0.0.129",
+#   "pybedtools>=0.9.0",
+#   "termcolor>=2.3",
+#   "attrs>=23.0",
+#]
+
+[project.scripts]
+# CLI entry points
+gff-motif-coverage = "nonbdna_pipeline.gff_motif_coverage:main"
+stream-and-merge = "nonbdna_pipeline.stream_and_merge_bucket:main"
+tss-tes-processor = "nonbdna_pipeline.tss_tes_processing:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nonbdna_pipeline"]

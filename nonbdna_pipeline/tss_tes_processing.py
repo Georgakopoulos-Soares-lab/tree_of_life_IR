@@ -1,5 +1,4 @@
 import time
-from stream_and_merge_bucket import StreamAndMerge 
 import polars as pl 
 from pathlib import Path 
 from termcolor import colored
@@ -11,12 +10,11 @@ import threading
 import gzip
 import csv
 import logging
-import time
 from typing import Optional 
-from pwm_density import PWMExtractor 
 import attr
-from functools import partial
 from attr import field
+from nonbdna_pipeline.stream_and_merge_bucket import StreamAndMerge 
+from nonbdna_pipeline.pwm_density import PWMExtractor 
 
 def read_gff(gff_file: str, 
              end_to_one_bp: bool = False,
@@ -24,22 +22,20 @@ def read_gff(gff_file: str,
              filter_on: Optional[str] = None,
              parse_biotype: bool = False,
              binary_biotype: bool = True) -> pl.DataFrame:
-    def _parse_biotype(early_stop: bool, attributes: str) -> str:
+    def _parse_biotype(attributes: str, early_stop: bool = False) -> str:
         attrs = attributes.split(";")
         attrs_dict = dict()
         for attr in attrs:
             if "=" in attr:
                 key, val = attr.split("=", 1)
                 attrs_dict[key] = val
-                if early_stop and key == "biotype":
+                if early_stop and key == "gene_biotype":
                     break
-        return attrs_dict.get("biotype", ".")
+        return attrs_dict.get("gene_biotype", "?")
     def _map_biotype(biotype: str) -> str:
-        match biotype:
-            case "protein_coding" | "coding":
-                return biotype 
-            case _:
-                return "non_coding"
+        if biotype == "protein_coding":
+            return "protein_coding"
+        return "non_coding"
     GFF_FIELDS = ["seqID", "source", "compartment", "start", "end", "score", "strand", "phase", "attributes"]
     df = pd.read_table(gff_file, 
                        comment="#", 
@@ -53,17 +49,24 @@ def read_gff(gff_file: str,
     if pseudogenes_to_genes:
         df["compartment"] = df["compartment"].replace({"pseudogene": "gene"})
     if filter_on:
-        df = df[df["compartment"] == filter_on].reset_index(drop=True)
+        if isinstance(filter_on, str):
+            df = df[df["compartment"] == filter_on]
+        else:
+            filter_on = set(filter_on)
+            df = df[df["compartment"].isin(filter_on)]
+        df = df.reset_index(drop=True)
     selected_columns = ["seqID", "start", "end", "compartment", "strand"]
     if parse_biotype and binary_biotype:
-        df["biotype"] = df["attributes"].apply(partial(_parse_biotype, early_stop=True)).apply(_map_biotype)
+        df["biotype"] = df["attributes"].apply(lambda y: _parse_biotype(y, early_stop=True)).apply(_map_biotype)
         selected_columns.append("biotype")
     elif parse_biotype:
         df["biotype"] = df["attributes"].apply(_parse_biotype)
         selected_columns.append("biotype")
     return df[selected_columns]
 
-def expand_gff(gff_df, on: str, window_size: int) -> pd.DataFrame:
+def expand_gff(gff_df, on: str, 
+               window_size: int, 
+               ignore_biotype: bool = False) -> pd.DataFrame:
     positive_charge = gff_df[gff_df["strand"] == "+"].copy()
     negative_charge = gff_df[gff_df["strand"] == "-"].copy()
     if on == "TSS":
@@ -81,10 +84,13 @@ def expand_gff(gff_df, on: str, window_size: int) -> pd.DataFrame:
     else:
         raise ValueError(f"Invalid `on` value `{on}`. Must be one of 'TSS' or 'TES'.")
     gff_df = pd.concat([positive_charge, negative_charge], ignore_index=True)
-    gff_df = gff_df[["seqID", "expanded_start", "expanded_end", "compartment", "strand"]].rename(columns={"seqID": "Chromosome", 
-                                                                                                          "expanded_start": "Start", 
-                                                                                                          "expanded_end": "End",
-                                                                                                          "strand": "Strand"})
+    selected_cols = ["seqID", "expanded_start", "expanded_end", "compartment", "strand"]
+    if "biotype" in gff_df.columns and not ignore_biotype:
+        selected_cols.append("biotype")
+    gff_df = gff_df[selected_cols].rename(columns={"seqID": "Chromosome", 
+                                                    "expanded_start": "Start", 
+                                                    "expanded_end": "End",
+                                                    "strand": "Strand"})
     return gff_df 
 
 def calculate_strand_polarity(df, pattern: str, THRESHOLD: float = 0.8) -> pd.DataFrame:
@@ -110,7 +116,7 @@ def calculate_strand_polarity(df, pattern: str, THRESHOLD: float = 0.8) -> pd.Da
     return df
 
 def bootstrap_sample_density(density_df: pd.DataFrame, 
-                             taxonomic_level: int = "species", 
+                             taxonomic_level: str = "species", 
                              n_samples: int = 1000, 
                              window_size: int = 500,
                              alpha: float = 0.05) -> dict[str, pd.DataFrame]:
@@ -133,7 +139,6 @@ def bootstrap_sample_density(density_df: pd.DataFrame,
     }
     return bootstrap_results
 
-    
 @attr.s
 class TSSTESProcessor(StreamAndMerge):
     window_size: int = field(converter=int, default=500)
@@ -146,7 +151,6 @@ class TSSTESProcessor(StreamAndMerge):
     biotypes: list[str] = field(init=False, factory=lambda: ["protein_coding", "non_coding", "."])
     LOG_INTERVAL: int = 240
     FIELDS: list[str] = ["#assembly_accession", "pattern", "site", "biotype", "polarity", "partition", "overlapping_genes", "pct_gene", "total_genes"]
-
     def __attrs_post_init__(self) -> None:
         super().__attrs_post_init__()
         self.outdir = self.indir.joinpath("tss_tes_density")
@@ -154,13 +158,12 @@ class TSSTESProcessor(StreamAndMerge):
         self.log_dir = self.log_indir.joinpath("tss_tes_density_logs")
         self.log_dir.mkdir(exist_ok=True, parents=False)
         return
-        
-    def _setup_logging(self) -> None:
+    def _setup_logging(self, bucket_id: int) -> None:
         DATE = time.strftime("%Y%m%d_%H%M%S", time.localtime())
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(message)s",
-            filename=self.log_dir.joinpath(f"tss_tes_processing_{DATE}.log"),
+            filename=self.log_dir.joinpath(f"tss_tes_processing_{DATE}_{bucket_id}.log"),
             # handlers=[
             #     logging.FileHandler(self.log_dir.joinpath(f"tss_tes_processing_{DATE}.log")),
             #     logging.StreamHandler()
@@ -169,9 +172,8 @@ class TSSTESProcessor(StreamAndMerge):
     def _log_progress(self) -> None:
         while True:
             prc = self.files_processed / self.total_files * 1e2 if self.total_files > 0 else 0.0
-            logging.info(f"Progress: {prc:.2f} files processed.")
+            logging.info(f"Progress: {prc:.2f}% files processed.")
             time.sleep(TSSTESProcessor.LOG_INTERVAL)
-
     @staticmethod 
     def _get_min_max_partition(pattern: str) -> tuple[Optional[int], Optional[int]]:
         if pattern == "IR" or pattern == "DR":
@@ -183,7 +185,7 @@ class TSSTESProcessor(StreamAndMerge):
         else:
             raise ValueError(f"Invalid pattern `{pattern}`.")
         return min_partition, max_partition
-            
+
     def process_bucket(self, bucket_id: int, 
                        gff_indir: str, 
                        pattern: str, 
@@ -192,59 +194,69 @@ class TSSTESProcessor(StreamAndMerge):
                        min_partition: Optional[int] = None, 
                        max_partition: Optional[int] = None,
                        pseudogenes_to_genes: bool = True,
-                       biotype: bool = False,
+                       use_biotype: bool = False,
                        assembly_summary: Optional[str] = None,
                        ignore_errors: bool = False) -> None:
+
+        if use_biotype:
+            biotypes = tuple(self.biotypes)
+        else:
+            biotypes = (".", )
         infiles = self.load_validated_files_from_log(bucket_id=bucket_id, pattern=pattern, ignore_errors=ignore_errors)
         print(colored(f"Total files to process in bucket {bucket_id}: {len(infiles)}.", "green"))
         # extract_name = lambda x: Path(x).name.split(".fna")[0]
-        extract_name = lambda x: Path(x).name.split(f"_{pattern}")[0]
-        extract_id = lambda x: "_".join(Path(x).name.split("_")[:2])
         gff_indir = Path(gff_indir).resolve()
         if min_partition is None or max_partition is None:
             min_partition, max_partition = TSSTESProcessor._get_min_max_partition(pattern)
         if not gff_indir.is_dir():
             raise ValueError(f"Invalid directory `{gff_indir}`.")
+        # Dummy for now
         partitions = ["."] 
         pwm = PWMExtractor()
         self.total_files = len(infiles)
-        self._setup_logging()
+        self._setup_logging(bucket_id=bucket_id)
         if polarity:
             logging.info(f"Strand polarity calculation enabled for pattern `{pattern}`.")
             print(colored(f"Strand polarity calculation enabled for pattern `{pattern}`.", "yellow"))
         logging.info(f"Initializing processing of {self.total_files} files in bucket {bucket_id}.")
         thread = threading.Thread(target=self._log_progress, daemon=True)
         thread.start()
+        
+        # Process initialization
         outfile = self.outdir.joinpath(f"tss_tes_density_{pattern}_bucket_{bucket_id}.tsv.gz")
         fin = gzip.open(outfile, mode="wt")
         writer = csv.DictWriter(fin, fieldnames=TSSTESProcessor.FIELDS + list(map(str, range(-self.window_size, self.window_size+1))), delimiter="\t")
         window_range = list(map(str, range(-self.window_size, self.window_size+1)))
         writer.writeheader()
         for file_idx, infile in enumerate(infiles, start=1):
-            accession_name = extract_name(infile)
-            accession_id = extract_id(infile)
+            accession_name = StreamAndMerge.extract_name(infile, pattern=pattern)
+            accession_id = StreamAndMerge.extract_id(infile)
             extraction_file = self.indir.joinpath(accession_name + f"_{pattern}.processed.tsv")
             gff_file = gff_indir.joinpath(accession_name + ".gff")
             if not gff_file.is_file():
+                gff_file = gff_file.with_suffix(".gff.gz")
+                if not gff_file.is_file():
+                    continue 
+            gff_df = read_gff(gff_file, 
+                              end_to_one_bp=True, 
+                              pseudogenes_to_genes=pseudogenes_to_genes,
+                              parse_biotype=use_biotype,
+                              filter_on="gene")
+            total_genes = {".": gff_df.shape[0]}
+            if use_biotype:
+                total_genes.update({"protein_coding": gff_df[gff_df["biotype"] == "protein_coding"].shape[0],
+                                    "non_coding": gff_df[gff_df["biotype"] == "non_coding"].shape[0]})
+            if total_genes["."] == 0:
+                logging.warning(f"No features found in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                 continue 
+
             df = pd.read_table(extraction_file)
             if partition_col:
                 # partitions += list(range(min_partition, max_partition))
                 raise NotImplementedError("Partitioning not yet implemented.")
-
             if df.shape[0] == 0:
-                logging.warning(f"No motifs found in file `{extraction_file}`. Skipping.")
-                continue 
-            gff_df = read_gff(gff_file, 
-                              end_to_one_bp=True, 
-                              pseudogenes_to_genes=pseudogenes_to_genes, 
-                              parse_biotype=biotype,
-                              filter_on="gene")
-            total_genes = gff_df.shape[0]
-            if total_genes == 0:
-                logging.warning(f"No features found in GFF file `{gff_file}`. Skipping.")
-                continue 
-            
+                logging.warning(f"No motifs found in file `{extraction_file}`.")
+                # continue 
             df = df.rename(columns={"seqID": "Chromosome", 
                                     "start": "Start", 
                                     "end": "End", 
@@ -264,33 +276,41 @@ class TSSTESProcessor(StreamAndMerge):
             for site in self.sites:
                 expanded_gff_df = expand_gff(gff_df, on=site, window_size=self.window_size)
                 gff_gr = pr.PyRanges(expanded_gff_df)
-                df_joined = gff_gr.join(df_gr).as_df().rename(columns={"Chromosome": "seqID",
-                                                                   "Start": "start",
-                                                                   "End": "end",
-                                                                   "Strand": "strand",
-                                                                   "Start_b": "motif_start",
-                                                                   "End_b": "motif_end",
-                                                                   "Strand_b": "motif_strand"})
+                df_joined = (
+                                gff_gr.join(df_gr)
+                                      .as_df()
+                                      .rename(columns={
+                                                        "Chromosome": "seqID",
+                                                        "Start": "start",
+                                                        "End": "end",
+                                                        "Strand": "strand",
+                                                        "Start_b": "motif_start",
+                                                        "End_b": "motif_end",
+                                                        "Strand_b": "motif_strand"}
+                                      )
+                        )
                 # In that case, directly emit zero vectors for this site across all partitions.
                 if df_joined.shape[0] == 0:
                     zero_vec = {locus: 0 for locus in window_range}
                     for partition in partitions:
-                        base_data = {
-                            "#assembly_accession": accession_id,
-                            "pattern": pattern,
-                            "site": site,
-                            "biotype": ".",
-                            "partition": str(partition),
-                            "overlapping_genes": 0,
-                            "pct_gene": 0.0,
-                            "total_genes": total_genes
-                        }
-                        if polarity:
-                            for charge in self.polarities:
-                                writer.writerow(base_data | {"polarity": charge} | zero_vec)
-                        else:
-                            writer.writerow(base_data | {"polarity": "."} | zero_vec)
+                        for biotype in biotypes:
+                            base_data = {
+                                "#assembly_accession": accession_id,
+                                "pattern": pattern,
+                                "site": site,
+                                "biotype": biotype,
+                                "partition": str(partition),
+                                "overlapping_genes": 0,
+                                "pct_gene": 0.0,
+                                "total_genes": total_genes[biotype]
+                            }
+                            if polarity:
+                                for charge in self.polarities:
+                                    writer.writerow(base_data | {"polarity": charge} | zero_vec)
+                            else:
+                                writer.writerow(base_data | {"polarity": "."} | zero_vec)
                     continue
+                assert df.shape[0] > 0, f"No motifs found after joining with GFF for file `{extraction_file}` and site `{site}`."
                 df_joined["overlap"] = (np.minimum(df_joined["end"], df_joined["motif_end"]) - np.maximum(df_joined["start"], df_joined["motif_start"])).clip(lower=0)
 
                 if polarity:
@@ -307,25 +327,34 @@ class TSSTESProcessor(StreamAndMerge):
                     else:
                         density_df = pwm.extract_density(df_partitioned, window_size=self.window_size)
 
-                    gene_overlap = df_joined.drop_duplicates(subset=["seqID", "start", "end"]).shape[0]
-                    pct_gene_overlap = round(1e2 * gene_overlap / total_genes, 2)
-                    data = {"#assembly_accession": accession_id,
-                            "pattern": pattern,
-                            "site": site,
-                            "biotype": ".",
-                            "partition": str(partition),
-                            "overlapping_genes": gene_overlap,
-                            "pct_gene": pct_gene_overlap,
-                            "total_genes": total_genes
+                    gene_overlap = (
+                        df_partitioned
+                        .select(["seqID", "start", "end"])
+                        .unique()
+                        .height
+                    )
+                    data = {
+                        "#assembly_accession": accession_id,
+                        "pattern": pattern,
+                        "site": site,
+                        "partition": str(partition),
+                        "overlapping_genes": gene_overlap,
                     }
-                    if polarity:
-                        for charge in self.polarities:
-                            data.update({"polarity": charge} | {locus: int(counts) for locus, counts in zip(window_range, density_df[charge])})
+                    if not isinstance(density_df, dict):
+                        density_df = {".": density_df}
+                    for biotype in biotypes:
+                        pct_gene_overlap = round(1e2 * gene_overlap / total_genes[biotype], 2) if total_genes[biotype] > 0 else np.nan
+                        data.update({"pct_gene": pct_gene_overlap,
+                                     "total_genes": total_genes[biotype],
+                                     "biotype": biotype})
+                        if polarity:
+                            for charge in self.polarities:
+                                data.update({"polarity": charge} | {locus: int(counts) for locus, counts in zip(window_range, density_df[biotype][charge])})
+                                writer.writerow(data)
+                        else:
+                            data.update({"polarity": "."} | {locus: int(counts) for locus, counts in zip(window_range, density_df[biotype])})
                             writer.writerow(data)
-                    else:
-                        data.update({"polarity": "."} | {locus: int(counts) for locus, counts in zip(window_range, density_df)})
-                        writer.writerow(data)
-                self.files_processed = file_idx
+            self.files_processed = file_idx
         thread.join(timeout=1)
         fin.close()
 
@@ -338,19 +367,8 @@ class TSSTESProcessor(StreamAndMerge):
                                             dtype={"species_taxid": int,
                                                    "gc_percent": float,
                                                    "genome_size": int},
-
-                                            usecols=["#assembly_accession", 
-                                                    "species_taxid", 
-                                                    "organism_name",
-                                                    "phylum", 
-                                                    "kingdom", 
-                                                    "domain", 
-                                                    "total_gene_count", 
-                                                    "protein_coding_gene_count", 
-                                                    "non_coding_gene_count",
-                                                    "gc_percent", 
-                                                    "genome_size"]
-                                                                   )
+                                                   low_memory=False
+                                                    )
             except Exception as e:
                 logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
                 print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
@@ -377,10 +395,10 @@ def main():
     parser.add_argument("--gff_indir", type=str, required=True)
     parser.add_argument("--window_size", type=int, default=500)
     parser.add_argument("--strand_polarity", "-s", default=0, type=int, choices=[0,1], help="Whether to calculate strand polarity of motifs.")
-    parser.add_argument("--bucket_id", "-b", type=int, default=0)
+    parser.add_argument("--bucket_id", "-bid", type=int, default=0)
     parser.add_argument("-p", "--pattern", type=str, default='IR', choices=['IR', 'MR', 'STR'])
     parser.add_argument("--partition_col", type=str, default=None)
-    parser.add_argument("--biotype", "-t", default=None)
+    parser.add_argument("--use_biotype", "-b", default=None)
     parser.add_argument("--assembly_summary", "-asm", type=str, 
                         default="data/assembly_summary_with_tree.csv.gz", 
                         help="Path to assembly summary file to merge with density data.")
@@ -396,8 +414,6 @@ def main():
                                                            partition_col=args.partition_col,
                                                            assembly_summary=args.assembly_summary,
                                                            ignore_errors=args.ignore_errors,
-                                                           biotype=args.biotype,
+                                                           use_biotype=args.use_biotype,
                                                            )
-   
-
 if __name__ == "__main__": main()

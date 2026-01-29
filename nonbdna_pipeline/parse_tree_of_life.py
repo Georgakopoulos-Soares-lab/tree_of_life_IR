@@ -9,7 +9,6 @@ ASSEMBLY_COLS = ["#assembly_accession", "species_taxid", "taxid",
                  "assembly_level", "assembly_type", "ftp_path",
                  ]
 if __name__ == "__main__":
-
     import argparse 
     parser = argparse.ArgumentParser(description="Parse a tree of life file and print the parsed data.")
     parser.add_argument("--assembly_summary", type=str, default="assembly_summary.txt.gz", help="Path to the assembly summary file.")

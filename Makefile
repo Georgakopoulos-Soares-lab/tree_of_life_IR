@@ -5,6 +5,11 @@ REPORT_FILE=$(REPORT_DIR)/pytest_report.txt
 
 .PHONY: test test-verbose ci-clean
 
+WINDOW_SIZE=10
+
+run:
+	@python nonbdna_pipeline/tss_tes_processing.py nonbdna_pipeline/new_schedule_4_cf186650022b49b7b8c27d123dccc3ca.json --indir nonbdna_pipeline/extractions_IR --gff_indir nonbdna_pipeline/gff_db -p IR -s 0 --ignore_errors --window_size $(WINDOW_SIZE)
+
 ci-clean:
 	@mkdir -p $(REPORT_DIR)
 	@rm -f $(REPORT_FILE)

@@ -1,9 +1,4 @@
 # Mindi: A Non B-DNA extractor tool for data analysis
-
-__author__ = "Nikol Chantzi"
-__version__ = "1.0.1"
-__email__ = "nmc6088@psu.edu"
-
 import sys
 import os
 import shutil
@@ -207,12 +202,14 @@ class MindiTool:
     def moveto(self, dest: str) -> None:
         dest = Path(dest).resolve()
         for m in self.extractions:
-            shutil.move(self.fnp[m], dest)
-            self.fnp[m] = dest.joinpath(self.fnp[m].name)
             if m == "IR" or m == "DR" or m == "MR":
+                # move processed file once and update pointer
                 shutil.move(self.fnp[m], dest)
+                self.fnp[m] = dest.joinpath(Path(self.fnp[m]).name)
             else:
+                # move raw file for other modes and update pointer
                 shutil.move(self.fn[m], dest)
+                self.fn[m] = dest.joinpath(Path(self.fn[m]).name)
 
     def to_dataframe(self, mode: str, usecols: bool = True) -> pd.DataFrame:
         # STILL EXPERIMENTAL
@@ -317,10 +314,16 @@ class MindiTool:
         return MindiTool.get_HDNA(mindi_table)
 
     def cleanup(self) -> None:
-        if self.fnp and Path(self.fnp).is_file():
-            os.remove(self.fnp)
-        else:
-            print(colored(f"WARNING! Processed file {self.fnp} does not exist.", "red"))
+        removed_any = False
+        for m, p in list(self.fnp.items()):
+            pth = Path(p)
+            if pth.is_file():
+                os.remove(pth)
+                removed_any = True
+            else:
+                print(colored(f"WARNING! Processed file {pth} does not exist.", "red"))
+        if not removed_any:
+            print(colored("WARNING! No processed files found for cleanup.", "red"))
 
     @staticmethod
     def complement(nucleotide: str) -> str:
