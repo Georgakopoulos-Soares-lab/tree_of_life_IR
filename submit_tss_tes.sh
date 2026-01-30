@@ -1,6 +1,6 @@
-
 #!/bin/bash
 
+#SBATCH -A BCS25073
 #SBATCH -J NonBDNA
 #SBATCH -p gg
 #SBATCH -N 2
@@ -12,4 +12,4 @@
 #SBATCH --mail-user=nc29578@my.utexas.edu
 
 export POLARS_MAX_THREADS=1
-snakemake -s tss_tes_pipeline.smk --configfile nonbdna_pipeline/config_IR.yaml -cores 288
+snakemake -s tss_tes_pipeline.smk --configfile nonbdna_pipeline/config_IR.yaml --cores 288

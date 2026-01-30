@@ -19,25 +19,26 @@ def main():
     with open(schedule, mode="r", encoding="UTF-8") as f:
         schedule_data = json.load(f)
 
-    infiles = [infile for infile in indir.glob("*.fna")]
-    infiles += infiles + [infile for infile in indir.glob("*.fa")]
-    infiles += infiles + [infile for infile in indir.glob("*.fna.gz")]
-    infiles += infiles + [infile for infile in indir.glob("*.fa.gz")]
+    suffixes = ["fna", "fa", "fasta"]
+    infiles = []
+    for suffix in suffixes:
+        infiles += [infile for infile in indir.glob(f"*.{suffix}")]
+        infiles += [infile for infile in indir.glob(f"*.{suffix}.gz")]
+    infiles = list(set(infiles))
+    # # 
     infiles = list(map(str, infiles))
     total_infiles = len(infiles)
     assign_to_bucket = dict()
     # Assign new files to random buckets proportionally
     targets = list(map(str, targets))
+    print(colored(f"Total infiles detected: {total_infiles}.", "yellow"))
     for i, infile in enumerate(infiles):
         assign_to_bucket.setdefault(targets[i%len(targets)], []).append(infile)
     print(assign_to_bucket)
-
-    print(colored(f"Total infiles detected: {total_infiles}.", "yellow"))
     # Append new files
     for bucket_id, bucket in assign_to_bucket.items():
         for file in bucket:
             schedule_data[bucket_id].append(file)
-
     dest = schedule.parent.joinpath(schedule.name.replace(".json", f".updated_{total_infiles}.json"))
     with open(dest, mode="w", encoding="UTF-8") as fout:
         json.dump(schedule_data, fout, indent=4)
