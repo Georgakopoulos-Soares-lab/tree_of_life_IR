@@ -22,8 +22,6 @@ DATE=$(date +"%m-%d-%Y")
 echo "Total buckets: $BID"
 echo "Last bucket id: $LAST_BID"
 echo "Pattern: $PATTERN"
-echo "Shuffling level: $level."
-##
 echo "Initializing process..."
 ## 
 for BUCKET in $(seq 0 $LAST_BID);
