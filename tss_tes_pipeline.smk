@@ -9,7 +9,7 @@ configfile: "nonbdna_pipeline/config_IR.yaml"
 SCHEDULE = str(Path(config["schedule"]).resolve())
 INDIR = str(Path(config["indir"]).resolve())
 GFF_DIR = str(Path(config.get("gff_dir", config.get("gff_indir", ""))).resolve())
-GFF_TSS_TES_DIR = str(Path(config.get("gff_tss_tes_indir")).resolve())
+GFF_TSS_TES_DIR = str(Path(config.get("gff_indir_tss_tes")).resolve())
 ASM = str(Path(config.get("assembly_summary", "")).resolve()) if config.get("assembly_summary") else ""
 PATTERN = config.get("pattern", "IR")
 WINDOW_SIZE = int(config.get("window_size", 500))
