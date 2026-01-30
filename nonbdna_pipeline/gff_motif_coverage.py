@@ -24,6 +24,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
     log_dir: Path = field(init=False)
     total_files: int = field(init=False, default=0)
     outdir: Path = field(init=False)
+    gff_suffix: str = field(init=True, default=".agat.gff")
     polarities: list[str] = field(init=False, factory=lambda: ["Template", "Non-Template"])
     biotypes: list[str] = field(init=False, factory=lambda: ["protein_coding", "non_coding", "."])
     valid_compartments: set[str] = field(factory=lambda: {"gene", "exon", "CDS", "five_prime_UTR", "three_prime_UTR"})
@@ -98,12 +99,10 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             log_indir=self.log_dir,
         )
         logger = threading.Thread(target=tracker._log_progress, 
-                                  daemon=True, 
+                                  daemon=True,
                                   name="LoggerDaemon")
-        logger.start()
-
         # LOAD FILES
-        FIELDS = ["seqID", "start", "end", "compartment"] + GFFMotifCoverageProcessor.COVERAGE_FIELDS
+        FIELDS = ["seqID", "start", "end", "compartment", "merged_count"] + GFFMotifCoverageProcessor.COVERAGE_FIELDS
         EXPECTED_FIELDS = ["#assembly_accession", 
                     "biotype", 
                     "pattern", 
@@ -117,23 +116,24 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                     "median_coverage",
                     "std_coverage",
                     "total_compartments", 
-                    "pct_at_least_one"]
+                    "pct_at_least_one",
+                    "total_merged_members"]
 
         infiles = self.load_validated_files_from_log(bucket_id=bucket_id, pattern=pattern)
         tracker.total_records = len(infiles)
         outfile = self.outdir.joinpath(f"gff_motif_coverage_{pattern}_bucket_{bucket_id}.tsv.gz")
         logging.info(f"Initializing extraction process for pattern {pattern} (bucket {bucket_id}).")
         fin = gzip.open(outfile, mode="wt")
-        wrote_header = False
-
+        wrote_header = False 
+        logger.start()
         for file_idx, infile in enumerate(infiles, start=1):
             tracker.track += 1
             accession_name = StreamAndMerge.extract_name(infile, pattern)
             accession_id = StreamAndMerge.extract_id(infile)
             extraction_file = self.indir.joinpath(accession_name + f"_{pattern}.processed.tsv")
-            gff_file = gff_indir.joinpath(accession_name + ".agat.gff")
+            gff_file = gff_indir.joinpath(accession_name + self.gff_suffix)
             if not gff_file.is_file():
-                gff_file = gff_file.with_suffix(".agat.gff.gz")
+                gff_file = gff_file.with_suffix(f"{self.gff_suffix}.gz")
                 if not gff_file.is_file():
                     continue 
             gff_df = read_gff(gff_file, 
@@ -147,13 +147,39 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 logging.warning(f"No features found in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                 continue 
 
+            biotypes = self.biotypes if use_biotype else ["."]
             df = pd.read_table(extraction_file)
             if partition_col:
                 # partitions += list(range(min_partition, max_partition))
                 raise NotImplementedError("Partitioning not yet implemented.")
             if df.shape[0] == 0:
                 logging.warning(f"No motifs found in file `{extraction_file}`.")
-                # continue 
+                compartments = gff_df["compartment"].unique().tolist()
+                for biotype in biotypes:
+                    for compartment in compartments:
+                        coverage_df = pd.DataFrame({
+                            "#assembly_accession": [accession_id],
+                            "pattern": [pattern],
+                            "compartment": [compartment],
+                            "biotype": [biotype],
+                            "total_bases": [0],
+                            "compartment_length": [0],
+                            "total_compartments": [0],
+                            "pct_at_least_one": [0.0],
+                            "min_coverage": [0.0],
+                            "max_coverage": [0.0],
+                            "avg_coverage": [0.0],
+                            "median_coverage": [0.0],
+                            "std_coverage": [0.0],
+                            "total_merged_members": [0],
+                            "total_coverage": [0.0]
+                        })
+                        coverage_df.to_csv(fin, 
+                                       sep="\t", 
+                                       index=False, 
+                                       header=not wrote_header)
+                        wrote_header = True
+                continue 
             df = df.rename(columns={"seqID": "Chromosome", 
                                     "start": "Start", 
                                     "end": "End", 
@@ -162,7 +188,6 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             #   df = calculate_strand_polarity(df, pattern=pattern)
             df_gr = pr.PyRanges(df).merge(strand=False).as_df()
             df_bed = BedTool.from_dataframe(df_gr).sort()
-            biotypes = self.biotypes if use_biotype else ["."]
             # Why we need to loop
             # We are attempting to calculate the proportion of:
             # - Total Genic Region covered by motif base pairs 
@@ -181,15 +206,33 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 if gff_df_temp.shape[0] == 0:
                     logging.warning(f"No features found for biotype `{biotype}` in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                     continue
+                # create a composite Chromosome to preserve seqID+compartment through merging
                 gff_df_temp.loc[:, "Chromosome"] = gff_df_temp["seqID"] + ";" + gff_df_temp["compartment"]
+                # original ranges (with Chromosome column) used for counting
+                orig_pr = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]])
+                # merged ranges (will collapse overlapping features)
+                merged_pr = orig_pr.merge(strand=False)
+                merged_df = merged_pr.as_df()
+                # compute how many original features overlap each merged interval
+                if merged_df.shape[0] > 0:
+                    joined = merged_pr.join(orig_pr).as_df()
+                    # count how many original features overlap each merged interval
+                    counts = joined.groupby(["Chromosome", "Start", "End"]).size().reset_index(name="merged_count")
+                    merged_df = merged_df.merge(counts, on=["Chromosome", "Start", "End"], how="left")
+                    # counts was derived from joining merged intervals to original features,
+                    # so every merged interval should have a corresponding count. Convert
+                    # the column to int directly; remove the previous fillna(1) which
+                    # masked potential logic errors.
+                    merged_df["merged_count"] = merged_df["merged_count"].astype(int)
+                else:
+                    merged_df["merged_count"] = 0
+
                 gff_gr = (
-                        pr.PyRanges(gff_df_temp)
-                        .merge(strand=False)
-                        .as_df()
+                        merged_df
                         .assign(
                             seqID=lambda ds: ds["Chromosome"].str.split(";", expand=True)[0],
                             compartment=lambda ds: ds["Chromosome"].str.split(";", expand=True)[1]
-                        )[["seqID", "Start", "End", "compartment"]]
+                        )[["seqID", "Start", "End", "compartment", "merged_count"]]
                 )
                 gff_bed = BedTool.from_dataframe(gff_gr).sort() 
                 coverage_df = ( 
@@ -204,19 +247,20 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                         )
                         .group_by(["compartment"], maintain_order=True)
                         .agg(
-                            pl.col("total_bases").sum().alias("total_bases"),
-                            pl.col("compartment_length").sum().alias("compartment_length"),
-                            pl.col("total_bases").count().alias("total_compartments"),
-                            (1e2 * pl.col("at_least_one").mean()).alias("pct_at_least_one"),
-                            pl.col("coverage").min().alias("min_coverage"),
-                            pl.col("coverage").max().alias("max_coverage"),
-                            pl.col("coverage").mean().alias("avg_coverage"),
-                            pl.col("coverage").median().alias("median_coverage"),
-                            pl.col("coverage").std().alias("std_coverage")
-                        )
-                        .with_columns(
-                            (1e3 * pl.col("total_bases") / pl.col("compartment_length")).alias("total_coverage")
-                        )
+                                pl.col("total_bases").sum().alias("total_bases"),
+                                pl.col("compartment_length").sum().alias("compartment_length"),
+                                pl.col("total_bases").count().alias("total_compartments"),
+                                (1e2 * pl.col("at_least_one").mean()).alias("pct_at_least_one"),
+                                pl.col("coverage").min().alias("min_coverage"),
+                                pl.col("coverage").max().alias("max_coverage"),
+                                pl.col("coverage").mean().alias("avg_coverage"),
+                                pl.col("coverage").median().alias("median_coverage"),
+                                pl.col("coverage").std().alias("std_coverage"),
+                                pl.col("merged_count").sum().alias("total_merged_members")
+                            )
+                            .with_columns(
+                                (1e3 * pl.col("total_bases") / pl.col("compartment_length")).alias("total_coverage")
+                            )
                         .with_columns(
                             pl.lit(accession_id).alias("#assembly_accession"),
                             biotype=pl.lit(biotype),
@@ -235,7 +279,6 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 # coverage_df.write_csv(fin, separator="\t", include_header=file_idx==1)
             self.files_processed += 1
 
-        # Proper thread join
         logger.join(timeout=1.0)
         fin.close()
         if isinstance(assembly_summary, str) and Path(assembly_summary).is_file():    
@@ -276,6 +319,7 @@ def main():
     parser.add_argument("--pattern", "-p", type=str, default="IR", choices=["IR", "MR", "DR", "STR"])
     parser.add_argument("--indir", "-i", type=str)
     parser.add_argument("--gff_indir", "-g", type=str)
+    parser.add_argument("--gff_suffix", type=str, default=".agat.gff")
     parser.add_argument("--use_biotype", action="store_true", default=False)
     parser.add_argument("--pseudogenes_to_genes", action="store_true", default=True)
     parser.add_argument("--assembly_summary", type=str, default="data/assembly_summary_with_tree.csv.gz")
@@ -283,6 +327,7 @@ def main():
     GFFMotifCoverageProcessor(
         indir=args.indir,
         schedule=args.schedule,
+        gff_suffix=args.gff_suffix
     ).process_bucket(
                                 bucket_id=args.bucket_id,
                                 pattern=args.pattern,

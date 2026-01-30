@@ -15,6 +15,7 @@ max_partition: 9
 min_consensus_repeats: 3
 max_spacer: 8
 use_biotype: 1
+gff_suffix: '.agat.gff'
 min_sequence_length: 10
 min_arm_length: 10
 pattern: 'IR'
