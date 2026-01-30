@@ -197,7 +197,6 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             # they usually do (lncRNAs on the opposite strand), thus we have to perform the computation separately
 
             # # #
-            # # #
             for biotype in biotypes:
                 if biotype != ".":
                     gff_df_temp = gff_df[gff_df["biotype"] == biotype].copy()
@@ -206,23 +205,14 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 if gff_df_temp.shape[0] == 0:
                     logging.warning(f"No features found for biotype `{biotype}` in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                     continue
-                # create a composite Chromosome to preserve seqID+compartment through merging
                 gff_df_temp.loc[:, "Chromosome"] = gff_df_temp["seqID"] + ";" + gff_df_temp["compartment"]
-                # original ranges (with Chromosome column) used for counting
                 orig_pr = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]])
-                # merged ranges (will collapse overlapping features)
                 merged_pr = orig_pr.merge(strand=False)
                 merged_df = merged_pr.as_df()
-                # compute how many original features overlap each merged interval
                 if merged_df.shape[0] > 0:
                     joined = merged_pr.join(orig_pr).as_df()
-                    # count how many original features overlap each merged interval
                     counts = joined.groupby(["Chromosome", "Start", "End"]).size().reset_index(name="merged_count")
                     merged_df = merged_df.merge(counts, on=["Chromosome", "Start", "End"], how="left")
-                    # counts was derived from joining merged intervals to original features,
-                    # so every merged interval should have a corresponding count. Convert
-                    # the column to int directly; remove the previous fillna(1) which
-                    # masked potential logic errors.
                     merged_df["merged_count"] = merged_df["merged_count"].astype(int)
                 else:
                     merged_df["merged_count"] = 0

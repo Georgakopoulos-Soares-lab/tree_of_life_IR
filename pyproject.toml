@@ -23,6 +23,7 @@ authors = [{ name = "Nikol Chantzi" }]
 gff-motif-coverage = "nonbdna_pipeline.gff_motif_coverage:main"
 stream-and-merge = "nonbdna_pipeline.stream_and_merge_bucket:main"
 tss-tes-processor = "nonbdna_pipeline.tss_tes_processing:main"
+str-effect-detection = "nonbdna_pipeline.STR_effect_detection:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["nonbdna_pipeline"]
