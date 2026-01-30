@@ -9,6 +9,7 @@ configfile: "nonbdna_pipeline/config_IR.yaml"
 SCHEDULE = str(Path(config["schedule"]).resolve())
 INDIR = str(Path(config["indir"]).resolve())
 GFF_DIR = str(Path(config.get("gff_dir", config.get("gff_indir", ""))).resolve())
+GFF_TSS_TES_DIR = str(Path(config.get("gff_tss_tes_indir")).resolve())
 ASM = str(Path(config.get("assembly_summary", "")).resolve()) if config.get("assembly_summary") else ""
 PATTERN = config.get("pattern", "IR")
 WINDOW_SIZE = int(config.get("window_size", 500))
@@ -19,6 +20,7 @@ PSEUDOGENES_TO_GENES = str(config.get("pseudogenes_to_genes", 1))
 assert Path(SCHEDULE).is_file(), f"Schedule file {SCHEDULE} not found."
 assert Path(INDIR).exists(), f"Input dir {INDIR} not found."
 assert GFF_DIR and Path(GFF_DIR).exists(), f"GFF dir {GFF_DIR} not found. Set gff_dir in config."
+assert GFF_TSS_TES_DIR and Path(GFF_TSS_TES_DIR).exists(), f"GFF dir {GFF_TSS_TES_DIR} not found. Set gff_tss_tes_dir in config."
 
 OUTDIR = Path(INDIR).resolve()
 DENSITY_DIR = OUTDIR.joinpath("tss_tes_density")
@@ -63,7 +65,7 @@ rule tss_tes_bucket:
     params:
         schedule=SCHEDULE,
         indir=INDIR,
-        gff=GFF_DIR,
+        gff=GFF_TSS_TES_DIR,
         pattern=PATTERN,
         asm=ASM,
         window=WINDOW_SIZE,
