@@ -343,6 +343,8 @@ class TSSTESProcessor(StreamAndMerge):
                     if not isinstance(density_df, dict):
                         density_df = {".": density_df}
                     for biotype in biotypes:
+                        if biotype not in density_df:
+                            raise KeyError(f"Biotype `{biotype}` not found in density data for file `{extraction_file}`.")
                         pct_gene_overlap = round(1e2 * gene_overlap / total_genes[biotype], 2) if total_genes[biotype] > 0 else np.nan
                         data.update({"pct_gene": pct_gene_overlap,
                                      "total_genes": total_genes[biotype],

@@ -175,9 +175,12 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             # # #
             for biotype in biotypes:
                 if biotype != ".":
-                    gff_df_temp = gff_df[gff_df["biotype"] == biotype]
+                    gff_df_temp = gff_df[gff_df["biotype"] == biotype].copy()
                 else:
-                    gff_df_temp = gff_df
+                    gff_df_temp = gff_df.copy()
+                if gff_df_temp.shape[0] == 0:
+                    logging.warning(f"No features found for biotype `{biotype}` in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
+                    continue
                 gff_df_temp.loc[:, "Chromosome"] = gff_df_temp["seqID"] + ";" + gff_df_temp["compartment"]
                 gff_gr = (
                         pr.PyRanges(gff_df_temp)
@@ -221,7 +224,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                         )
                 )
                 (
-                    coverage_df.select([EXPECTED_FIELDS])
+                    coverage_df.select(EXPECTED_FIELDS)
                     .to_pandas()
                     .to_csv(fin, 
                             sep="\t", 

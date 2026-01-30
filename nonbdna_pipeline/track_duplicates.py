@@ -1,5 +1,4 @@
 # NCBI Database statistics
-
 import subprocess
 from collections import defaultdict
 from datetime import datetime
@@ -8,7 +7,6 @@ import json
 from tqdm import tqdm
 from termcolor import colored
 import logging
-
 
 def load_groups():
     assembly_groups = {}
@@ -103,8 +101,5 @@ def filter_duplicated_assemblies():
         for group, counts in group_counts.items():
             f.write(f"{group}\t{counts}\n")
 
-
-
 if __name__ == "__main__":
-
     filter_duplicated_assemblies()

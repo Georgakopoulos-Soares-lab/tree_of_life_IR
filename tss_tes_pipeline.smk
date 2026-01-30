@@ -2,10 +2,9 @@
 import os
 import json
 from pathlib import Path
-from nonbdna_pipeline.utils import load_bucket, load_bucket_ids
 
 # Prefer config file; can override with --configfile
-configfile: "config_IR.yaml"
+configfile: "nonbdna_pipeline/config_IR.yaml"
 
 SCHEDULE = str(Path(config["schedule"]).resolve())
 INDIR = str(Path(config["indir"]).resolve())
@@ -25,11 +24,25 @@ OUTDIR = Path(INDIR).resolve()
 DENSITY_DIR = OUTDIR.joinpath("tss_tes_density")
 COVERAGE_DIR = OUTDIR.joinpath("gff_motif_coverage")
 
+
+def _load_bucket_ids(schedule_path: str) -> list[int]:
+    with open(schedule_path, "r", encoding="UTF-8") as f:
+        buckets = json.load(f)
+    try:
+        return sorted(int(k) for k in buckets.keys())
+    except Exception:
+        return list(range(len(buckets)))
+
+
+BUCKETS = _load_bucket_ids(SCHEDULE)
+
+
 def bucket_out(bid: int) -> str:
     return str(DENSITY_DIR.joinpath(f"tss_tes_density_{PATTERN}_bucket_{bid}.tsv.gz"))
 
 PER_BUCKET_OUT = [bucket_out(bid) for bid in BUCKETS]
 MERGED_OUT = str(DENSITY_DIR.joinpath(f"tss_tes_density_{PATTERN}_all_buckets.tsv.gz"))
+
 
 def coverage_out(bid: int) -> str:
     return str(COVERAGE_DIR.joinpath(f"gff_motif_coverage_{PATTERN}_bucket_{bid}.tsv.gz"))
@@ -37,14 +50,16 @@ def coverage_out(bid: int) -> str:
 PER_BUCKET_COV = [coverage_out(bid) for bid in BUCKETS]
 MERGED_COV_OUT = str(COVERAGE_DIR.joinpath(f"gff_motif_coverage_{PATTERN}_all_buckets.tsv.gz"))
 
+
 rule all:
     input:
         MERGED_OUT,
         MERGED_COV_OUT
 
+
 rule tss_tes_bucket:
     output:
-        lambda wildcards: bucket_out(int(wildcards.bid))
+        f"{DENSITY_DIR}/tss_tes_density_{PATTERN}_bucket_{{bid}}.tsv.gz"
     params:
         schedule=SCHEDULE,
         indir=INDIR,
@@ -57,7 +72,7 @@ rule tss_tes_bucket:
         bid="\d+"
     shell:
         r"""
-        python -u nonbdna_pipeline/tss_tes_processing.py {params.schedule} \
+        tss-tes-processor {params.schedule} \
             -i {params.indir} \
             --gff_indir {params.gff} \
             -p {params.pattern} \
@@ -70,7 +85,7 @@ rule tss_tes_bucket:
 
 rule motif_coverage_bucket:
     output:
-        lambda wildcards: coverage_out(int(wildcards.bid))
+        f"{COVERAGE_DIR}/gff_motif_coverage_{PATTERN}_bucket_{{bid}}.tsv.gz"
     params:
         schedule=SCHEDULE,
         indir=INDIR,
@@ -82,7 +97,7 @@ rule motif_coverage_bucket:
         bid="\d+"
     shell:
         r"""
-        python -u nonbdna_pipeline/gff_motif_coverage.py {params.schedule} \
+        gff-motif-coverage {params.schedule} \
             --bucket_id {wildcards.bid} \
             -p {params.pattern} \
             -i {params.indir} \
@@ -105,6 +120,7 @@ def _reduce_outputs(input, output) -> None:
                             wrote_header = True
                     else:
                         fout.write(line)
+
 
 rule reduce_tss_tes_buckets:
     input:

@@ -22,7 +22,6 @@ csv.field_size_limit(sys.maxsize)
 
 @attr.s
 class MindiTool:
-
     TAIL_FIELDS: ClassVar[list[str]] = ["seqID", 
                                         "start", 
                                         "end", 
