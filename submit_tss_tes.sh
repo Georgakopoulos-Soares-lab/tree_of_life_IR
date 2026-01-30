@@ -11,4 +11,5 @@
 #SBATCH --mail-type=END
 #SBATCH --mail-user=nc29578@my.utexas.edu
 
-snakemake -s tss_tes_pipeline.smk --configfile nonbdna_pipeline/config_IR.yaml -j 288
+export POLARS_MAX_THREADS=1
+snakemake -s tss_tes_pipeline.smk --configfile nonbdna_pipeline/config_IR.yaml -cores 288

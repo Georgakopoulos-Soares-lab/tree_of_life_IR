@@ -131,9 +131,9 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             accession_name = StreamAndMerge.extract_name(infile, pattern)
             accession_id = StreamAndMerge.extract_id(infile)
             extraction_file = self.indir.joinpath(accession_name + f"_{pattern}.processed.tsv")
-            gff_file = gff_indir.joinpath(accession_name + ".gff")
+            gff_file = gff_indir.joinpath(accession_name + ".agat.gff")
             if not gff_file.is_file():
-                gff_file = gff_file.with_suffix(".gff.gz")
+                gff_file = gff_file.with_suffix(".agat.gff.gz")
                 if not gff_file.is_file():
                     continue 
             gff_df = read_gff(gff_file, 

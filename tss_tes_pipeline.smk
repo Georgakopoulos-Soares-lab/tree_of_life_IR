@@ -98,7 +98,7 @@ rule motif_coverage_bucket:
     wildcard_constraints:
         bid="\d+"
     shell:
-        r"""
+        """
         gff-motif-coverage {params.schedule} \
             --bucket_id {wildcards.bid} \
             -p {params.pattern} \

@@ -27,3 +27,9 @@ test: ci-clean
 test-verbose: ci-clean
 	$(PYTEST) -vv -s --disable-warnings --durations=10 --maxfail=1 $(TESTS_DIR) | tee $(REPORT_FILE)
 
+dag:
+	snakemake --dag -s tss_tes_pipeline.smk \
+		--configfile nonbdna_pipeline/config_IR.yaml | dot -Tpng -o tss_tes_dag.png
+
+snake:
+	bash submit_tss_tes.sh
