@@ -22,17 +22,24 @@ def read_gff(gff_file: str,
              filter_on: Optional[str] = None,
              parse_biotype: bool = False,
              binary_biotype: bool = True) -> pl.DataFrame:
-    def _parse_biotype(attributes: str, early_stop: bool = False) -> str:
+    def _parse_attributes(attributes: str, 
+                          attribute: str,
+                          early_stop: bool = True,
+                          ) -> str:
         attrs = attributes.split(";")
         attrs_dict = dict()
         for attr in attrs:
             if "=" in attr:
                 key, val = attr.split("=", 1)
                 attrs_dict[key] = val
-                if early_stop and key == "gene_biotype":
+                if early_stop and key == attribute:
                     break
-        return attrs_dict.get("gene_biotype", "?")
+        return attrs_dict.get(attribute, np.nan)
     def _map_biotype(biotype: str) -> str:
+        # Treat missing or unknown biotypes as non_coding so genes that
+        # don't explicitly state protein_coding are classified as non_coding
+        if pd.isna(biotype):
+            return "non_coding"
         if biotype == "protein_coding":
             return "protein_coding"
         return "non_coding"
@@ -57,10 +64,16 @@ def read_gff(gff_file: str,
         df = df.reset_index(drop=True)
     selected_columns = ["seqID", "start", "end", "compartment", "strand"]
     if parse_biotype and binary_biotype:
-        df["biotype"] = df["attributes"].apply(lambda y: _parse_biotype(y, early_stop=True)).apply(_map_biotype)
+        df.loc[:, "biotype"] = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        mask = df["compartment"] == "gene"
+        df.loc[mask, "biotype"] = df.loc[mask, "biotype"].apply(_map_biotype)
+        df.loc[~mask, "biotype"] = "."
         selected_columns.append("biotype")
     elif parse_biotype:
-        df["biotype"] = df["attributes"].apply(_parse_biotype)
+        df.loc[:, "biotype"] = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        mask = df["compartment"] == "gene"
+        # For non-gene compartments set biotype to "."; keep gene biotypes
+        df.loc[~mask, "biotype"] = "."
         selected_columns.append("biotype")
     return df[selected_columns]
 
