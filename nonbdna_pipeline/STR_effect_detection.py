@@ -151,17 +151,17 @@ def main():
     if not STR_indir.is_dir():
         raise FileNotFoundError(f"Missing STR input directory `{STR_indir}`.")
 
-    pattern = args.pattern
-    schedule = args.schedule
-    bucket_id = args.bucket_id
-    partition_col = args.partition
     STREffectDetector(
+        schedule=args.schedule,
         indir=indir,
         STR_indir=STR_indir,
         outdir=outdir,
     ).process_bucket(
-        bucket_id=bucket_id,
-        pattern=pattern,
+        bucket_id=args.bucket_id,
+        pattern=args.pattern,
+        partition_col=args.partition_col,
+        min_partition=args.min_partition,
+        max_partition=args.max_partition,
     )
 
 if __name__ == "__main__": main()
