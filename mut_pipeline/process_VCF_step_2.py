@@ -3,16 +3,15 @@ import os
 import shutil
 import tempfile
 from collections import defaultdict
-
 import polars as pl
 from pybedtools import BedTool, Interval
 from tqdm import tqdm
-
 from process_VCF_step_1 import *
-
-
 class BatchProcessor:
-    def __init__(self, location: str, reference: str, outdir: str) -> None:
+    def __init__(self, 
+                 location: str, 
+                 reference: str, 
+                 outdir: str) -> None:
         self.mutation_types = ["snp", "smalldel", "smallins"]
         self.outdir = Path(outdir).resolve()
         self.outdir.mkdir(exist_ok=True)
@@ -37,7 +36,6 @@ class BatchProcessor:
         self.genomes_loc.mkdir(exist_ok=True)
         self.download_reference()
         self.fasta_to_species = {value: key for key, value in self.ref.items()}
-
         self.fasta_files = {
             self.fasta_to_species[self.extract_id(file)]: file
             for file in self.genomes_loc.glob("*.fna")
@@ -58,8 +56,10 @@ class BatchProcessor:
                 ref[species_taxid] = name
         return ref
 
-    def process(
-        self, MQ: Optional[int] = 50, QUAL: Optional[int] = 60, DP: Optional[int] = None
+    def process(self, 
+                MQ: Optional[int] = 50, 
+                QUAL: Optional[int] = 60, 
+                DP: Optional[int] = None
     ):
         processed_VCF = dict()
         for VCF_in in tqdm(self.infiles):
@@ -115,10 +115,7 @@ class BatchProcessor:
         print(colored("DONE!", "green"))
 
     def fetch_files(self) -> dict[str, Path]:
-        files = {
-            int(file.name.split("_")[0]): file
-            for file in self.location.glob("*.vcf.gz")
-        }
+        files = {int(file.name.split("_")[0]): file for file in self.location.glob("*.vcf.gz")}
         return files
 
     def extract_density(self, overwrite: bool = False) -> pl.DataFrame:
@@ -254,7 +251,6 @@ class BatchProcessor:
                 float_precision=4,
             )
         )
-
         # return df
 
 def main():
@@ -274,12 +270,13 @@ def main():
     print(colored(f"Maximum DP: {args.DP}.", "magenta"))
     summary = Path("assembly_summary_with_tree.csv.gz")
     processor = BatchProcessor(
-        location=args.location, reference=args.reference, outdir=args.outdir
+        location=args.location, 
+        reference=args.reference, 
+        outdir=args.outdir
     )
     # processor.process(MQ=args.MQ, QUAL=args.QUAL, DP=args.DP)
     processor.extract_density(overwrite=args.overwrite)
     processor.annotate_density(summary=summary)
-
 
 if __name__ == "__main__":
     main()
