@@ -1,5 +1,8 @@
-schedule: 'schedule_288_normal.json'
-indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_12-11-2025_IR'
+# schedule: 'nonbdna_pipeline/schedule_288_normal.json'
+# indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_12-11-2025_IR'
+schedule: 'nonbdna_pipeline/new_schedule_4_cf186650022b49b7b8c27d123dccc3ca.json'
+indir: 'nonbdna_pipeline/extractions_IR'
+gff_indir: 'nonbdna_pipeline/gff_db'
 # schedule: '/work/10904/nikolchanchan/vista/tree_of_life_IR/nonbdna_pipeline/schedule_shuffled_IR_1000_10801_288_buckets.json'
 # indir: '/scratch/10904/nikolchanchan/nonbdna_data_extractions/extractions_shuffled_level_12-12-2025_2_IR'
 partition_col: 'spacer_length'
@@ -7,9 +10,10 @@ min_partition: 0
 max_partition: 9
 min_consensus_repeats: 3
 max_spacer: 8
+use_biotype: 1
 min_sequence_length: 10
 min_arm_length: 10
 pattern: 'IR'
 seq_col: 'sequence'
 step_threshold: 0.05
-assembly_summary: 'data/assembly_summary_with_tree.csv.gz'
+assembly_summary: 'nonbdna_pipeline/data/assembly_summary_with_tree.csv.gz'
