@@ -18,6 +18,32 @@ from nonbdna_pipeline.stream_and_merge_bucket import StreamAndMerge
 from nonbdna_pipeline.pwm_density import PWMExtractor 
 from nonbdna_pipeline.tss_tes_processing import * 
 
+def merge_with_summary(assembly_summary: str, outfile: str):
+    if isinstance(assembly_summary, str) and Path(assembly_summary).is_file():    
+        logging.info(f"Found assembly summary file `{assembly_summary}`. Merging density data with assembly information.")
+        assembly_summary = Path(assembly_summary).resolve()
+        # headers = list(pd.read_table("headers.txt").columns)
+        try:
+            assembly_df = pd.read_table(assembly_summary, 
+                                        dtype={"species_taxid": int,
+                                               "gc_percent": float,
+                                               "genome_size": int},
+                                               low_memory=False
+                                                )
+        except Exception as e:
+            logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
+            print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
+            return
+        coverage_df = pd.read_table(outfile)
+        coverage_df = coverage_df\
+                    .merge(
+                                assembly_df,
+                                left_on="#assembly_accession",
+                                right_on="#assembly_accession",
+                                how="left"
+                    )
+        return coverage_df 
+
 @attr.s 
 class GFFMotifCoverageProcessor(StreamAndMerge):
     files_processed: int = field(init=False, default=0)
@@ -174,7 +200,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                             "total_merged_members": [0],
                             "total_coverage": [0.0]
                         })
-                        coverage_df.to_csv(fin, 
+                        coverage_df[EXPECTED_FIELDS].to_csv(fin, 
                                        sep="\t", 
                                        index=False, 
                                        header=not wrote_header)
@@ -209,13 +235,10 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 orig_pr = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]])
                 merged_pr = orig_pr.merge(strand=False)
                 merged_df = merged_pr.as_df()
-                if merged_df.shape[0] > 0:
-                    joined = merged_pr.join(orig_pr).as_df()
-                    counts = joined.groupby(["Chromosome", "Start", "End"]).size().reset_index(name="merged_count")
-                    merged_df = merged_df.merge(counts, on=["Chromosome", "Start", "End"], how="left")
-                    merged_df["merged_count"] = merged_df["merged_count"].astype(int)
-                else:
-                    merged_df["merged_count"] = 0
+                joined = merged_pr.join(orig_pr).as_df()
+                counts = joined.groupby(["Chromosome", "Start", "End"]).size().reset_index(name="merged_count")
+                merged_df = merged_df.merge(counts, on=["Chromosome", "Start", "End"], how="left")
+                merged_df["merged_count"] = merged_df["merged_count"].astype(int)
 
                 gff_gr = (
                         merged_df
@@ -240,16 +263,16 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                                 pl.col("total_bases").sum().alias("total_bases"),
                                 pl.col("compartment_length").sum().alias("compartment_length"),
                                 pl.col("total_bases").count().alias("total_compartments"),
-                                (1e2 * pl.col("at_least_one").mean()).alias("pct_at_least_one"),
-                                pl.col("coverage").min().alias("min_coverage"),
-                                pl.col("coverage").max().alias("max_coverage"),
-                                pl.col("coverage").mean().alias("avg_coverage"),
-                                pl.col("coverage").median().alias("median_coverage"),
-                                pl.col("coverage").std().alias("std_coverage"),
+                                (1e2 * pl.col("at_least_one").mean()).round(3).alias("pct_at_least_one"),
+                                pl.col("coverage").min().round(3).alias("min_coverage"),
+                                pl.col("coverage").max().round(3).alias("max_coverage"),
+                                pl.col("coverage").mean().round(3).alias("avg_coverage"),
+                                pl.col("coverage").median().round(3).alias("median_coverage"),
+                                pl.col("coverage").std().round(3).alias("std_coverage"),
                                 pl.col("merged_count").sum().alias("total_merged_members")
                             )
                             .with_columns(
-                                (1e3 * pl.col("total_bases") / pl.col("compartment_length")).alias("total_coverage")
+                                (1e3 * pl.col("total_bases") / pl.col("compartment_length")).round(3).alias("total_coverage")
                             )
                         .with_columns(
                             pl.lit(accession_id).alias("#assembly_accession"),
@@ -268,32 +291,11 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 wrote_header = True
                 # coverage_df.write_csv(fin, separator="\t", include_header=file_idx==1)
             self.files_processed += 1
-
         logger.join(timeout=1.0)
         fin.close()
-        if isinstance(assembly_summary, str) and Path(assembly_summary).is_file():    
-            logging.info(f"Found assembly summary file `{assembly_summary}`. Merging density data with assembly information.")
-            assembly_summary = Path(assembly_summary).resolve()
-            # headers = list(pd.read_table("headers.txt").columns)
-            try:
-                assembly_df = pd.read_table(assembly_summary, 
-                                            dtype={"species_taxid": int,
-                                                   "gc_percent": float,
-                                                   "genome_size": int},
-                                                   low_memory=False
-                                                    )
-            except Exception as e:
-                logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
-                print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
-                return
-            coverage_df = pd.read_table(outfile)
-            coverage_df = coverage_df\
-                        .merge(
-                                    assembly_df,
-                                    left_on="#assembly_accession",
-                                    right_on="#assembly_accession",
-                                    how="left"
-                        )
+        coverage_df = merge_with_summary(assembly_summary=assembly_summary,
+                                          outfile=outfile)
+        if coverage_df:
             merged_outfile = self.outdir.joinpath(f"tss_tes_density_{pattern}_bucket_{bucket_id}_with_assembly_data.tsv.gz")
             coverage_df.to_csv(merged_outfile, mode="w", sep="\t", index=False, compression="gzip")
             logging.info(f"Merged density data with assembly summary and saved to `{merged_outfile}`.")

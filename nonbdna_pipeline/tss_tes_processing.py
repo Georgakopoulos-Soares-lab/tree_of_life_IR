@@ -16,6 +16,32 @@ from attr import field
 from nonbdna_pipeline.stream_and_merge_bucket import StreamAndMerge 
 from nonbdna_pipeline.pwm_density import PWMExtractor 
 
+def merge_with_summary(assembly_summary: str, outfile: str):
+    if isinstance(assembly_summary, str) and Path(assembly_summary).is_file():    
+        logging.info(f"Found assembly summary file `{assembly_summary}`. Merging density data with assembly information.")
+        assembly_summary = Path(assembly_summary).resolve()
+        # headers = list(pd.read_table("headers.txt").columns)
+        try:
+            assembly_df = pd.read_table(assembly_summary, 
+                                        dtype={"species_taxid": int,
+                                               "gc_percent": float,
+                                               "genome_size": int},
+                                               low_memory=False
+                                                )
+        except Exception as e:
+            logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
+            print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
+            return
+        coverage_df = pd.read_table(outfile)
+        coverage_df = coverage_df\
+                    .merge(
+                                assembly_df,
+                                left_on="#assembly_accession",
+                                right_on="#assembly_accession",
+                                how="left"
+                    )
+        return coverage_df 
+
 def read_gff(gff_file: str, 
              end_to_one_bp: bool = False,
              pseudogenes_to_genes: bool = True, 
@@ -64,16 +90,26 @@ def read_gff(gff_file: str,
         df = df.reset_index(drop=True)
     selected_columns = ["seqID", "start", "end", "compartment", "strand"]
     if parse_biotype and binary_biotype:
-        df.loc[:, "biotype"] = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        # parse gene_biotype and make sure the column is a string dtype
+        biotype_series = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        # Use pandas string dtype to avoid assignments into float columns (NaNs can create float dtype)
+        biotype_series = biotype_series.astype("string")
         mask = df["compartment"] == "gene"
-        df.loc[mask, "biotype"] = df.loc[mask, "biotype"].apply(_map_biotype)
-        df.loc[~mask, "biotype"] = "."
+        # map gene biotypes to binary categories for gene rows on the temporary series
+        biotype_series.loc[mask] = biotype_series.loc[mask].apply(_map_biotype)
+        # set non-gene compartments to a literal dot
+        biotype_series.loc[~mask] = "."
+        # assign the fully-constructed string series back to the DataFrame in one step
+        df.loc[:, "biotype"] = biotype_series
         selected_columns.append("biotype")
     elif parse_biotype:
-        df.loc[:, "biotype"] = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        # parse gene_biotype and ensure string dtype
+        biotype_series = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        biotype_series = biotype_series.astype("string")
         mask = df["compartment"] == "gene"
         # For non-gene compartments set biotype to "."; keep gene biotypes
-        df.loc[~mask, "biotype"] = "."
+        biotype_series.loc[~mask] = "."
+        df.loc[:, "biotype"] = biotype_series
         selected_columns.append("biotype")
     return df[selected_columns]
 
@@ -372,30 +408,9 @@ class TSSTESProcessor(StreamAndMerge):
             self.files_processed = file_idx
         thread.join(timeout=1)
         fin.close()
-
-        if isinstance(assembly_summary, str) and Path(assembly_summary).is_file():    
-            logging.info(f"Found assembly summary file `{assembly_summary}`. Merging density data with assembly information.")
-            assembly_summary = Path(assembly_summary).resolve()
-            # headers = list(pd.read_table("headers.txt").columns)
-            try:
-                assembly_df = pd.read_table(assembly_summary, 
-                                            dtype={"species_taxid": int,
-                                                   "gc_percent": float,
-                                                   "genome_size": int},
-                                                   low_memory=False
-                                                    )
-            except Exception as e:
-                logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
-                print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
-                return
-            density_df = pd.read_table(outfile)
-            density_df = density_df\
-                        .merge(
-                                    assembly_df,
-                                    left_on="#assembly_accession",
-                                    right_on="#assembly_accession",
-                                    how="left"
-                        )
+        density_df = merge_with_summary(assembly_summary=assembly_summary,
+                                          outfile=outfile)
+        if density_df:
             merged_outfile = self.outdir.joinpath(f"tss_tes_density_{pattern}_bucket_{bucket_id}_with_assembly_data.tsv.gz")
             density_df.to_csv(merged_outfile, mode="w", sep="\t", index=False, compression="gzip")
             logging.info(f"Merged density data with assembly summary and saved to `{merged_outfile}`.")

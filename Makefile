@@ -2,6 +2,10 @@ PYTEST?=micromamba run -n nonbdna pytest
 TESTS_DIR=tests
 REPORT_DIR=.reports
 REPORT_FILE=$(REPORT_DIR)/pytest_report.txt
+# 
+GFF_INDIR=nonbdna_pipeline/gff_db  
+BUCKET=0
+PATTERN=IR
 
 .PHONY: test test-verbose ci-clean
 
@@ -18,12 +22,6 @@ ci-clean:
 test: ci-clean
 	$(PYTEST) -q $(TESTS_DIR) | tee $(REPORT_FILE)
 
-# Verbose with timings and warnings disabled
-# Includes -vv, -s (no capture), durations, and detailed summary
-# Add --maxfail=1 to stop on first failure for quick iteration
-# You can set PYTEST to plain 'pytest' if not using micromamba
-# Example: make PYTEST=pytest test-verbose
-
 test-verbose: ci-clean
 	$(PYTEST) -vv -s --disable-warnings --durations=10 --maxfail=1 $(TESTS_DIR) | tee $(REPORT_FILE)
 
@@ -33,3 +31,27 @@ dag:
 
 snake:
 	bash submit_tss_tes.sh
+
+motif_run:
+	gff-motif-coverage nonbdna_pipeline/new_schedule_4_cf186650022b49b7b8c27d123dccc3ca.json \
+			--indir nonbdna_pipeline/extractions_IR \
+			--pattern $(PATTERN) \
+			--gff_indir $(GFF_INDIR) \
+			--bucket_id $(BUCKET) \
+ 			--use_biotype \
+			--gff_suffix .gff
+
+tss_tes_run:
+	echo "Hi"
+
+inspect_motif_run:
+	gzcat nonbdna_pipeline/extractions_IR/gff_motif_coverage/gff_motif_coverage_IR_bucket_0.tsv.gz
+
+
+# MUTATIONS
+process_vcf:
+	python mut_pipeline/process_VCF_step_1.py \
+	--vcf_in mut_pipeline/test_data/sample.vcf.gz \
+	--reference mut_pipeline/test_data/reference.fasta \
+	--annotate
+def main():

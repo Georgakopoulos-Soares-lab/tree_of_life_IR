@@ -14,10 +14,8 @@ import pysam
 from attr import field
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from termcolor import colored
-
 class MultiallelicRecordException(Exception):
     pass
-
 @attr.s
 class Fasta:
     genome: str = field()
@@ -64,7 +62,6 @@ class Fasta:
                 self.plasmids[seqID_name] = "unknown"
         return self
 
-
 def determine_TYPE(ref_len: int, alt_len: int, MAX_SMALL_INDEL_SIZE: int = 50) -> str:
     if ref_len == alt_len == 1:
         return "snp"
@@ -77,7 +74,6 @@ def determine_TYPE(ref_len: int, alt_len: int, MAX_SMALL_INDEL_SIZE: int = 50) -
     elif alt_len > ref_len:
         return "ins"
     return "complex"
-
 
 @attr.s(slots=True)
 class VCFProcessor:
@@ -99,7 +95,10 @@ class VCFProcessor:
         pass
 
     def perform_quality_control(
-        self, VCF_in: str, reference: str, annotate: bool = True
+        self, 
+        VCF_in: str,
+        reference: str, 
+        annotate: bool = True
     ) -> str:
         if not shutil.which("bcftools"):
             raise RuntimeError(
@@ -157,15 +156,13 @@ class VCFProcessor:
                 return
         return str(vcf_path)
 
-    def process(
-        self,
-        VCF_in: str,
-        output_vcf: str,
-        reference: str,
-        quality_control: bool = True,
-        max_indel_size: int = 10,
-        MAX_SMALL_INDEL_SIZE: int = 50,
-    ):
+    def process(self,
+                    VCF_in: str,
+                    output_vcf: str,
+                    reference: str,
+                    quality_control: bool = True,
+                    max_indel_size: int = 10,
+                    MAX_SMALL_INDEL_SIZE: int = 50):
         output_vcf = Path(output_vcf).resolve()
         if quality_control:
             VCF_in = self.perform_quality_control(VCF_in, reference)
@@ -213,7 +210,6 @@ def main():
     VCFProcessor(MQ=args.MQ, DP=args.DQ, QUAL=args.QUAL).process(
         VCF_in=args.VCF_in, reference=args.reference, output_vcf=output_vcf
     )
-
 
 if __name__ == "__main__":
     main()

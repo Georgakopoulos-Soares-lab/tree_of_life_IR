@@ -1,12 +1,10 @@
 # Null Hypothesis Definition
-#
 import itertools
 import os
 import pickle
 import shutil
 from abc import abstractmethod
 from typing import ClassVar, Optional
-
 from Bio.Seq import Seq
 from process_VCF_step_2 import *
 
@@ -42,7 +40,6 @@ class PolymorphismModel:
             outdir = Path(outdir)
         if not outdir.is_dir():
             raise FileNotFoundError(f"Invalid output directory `{outdir}`.")
-
 
 class NaiveModel(PolymorphismModel):
     def __init__(self):
@@ -137,8 +134,9 @@ class TrinucleotideModel(PolymorphismModel):
             canonical[tri_rev] = mini
         return canonical
 
-    def saveas(
-        self, outdir: Optional[Path | str] = None, species_taxid: Optional[int] = None
+    def saveas(self, 
+               outdir: Optional[Path | str] = None, 
+               species_taxid: Optional[int] = None
     ) -> None:
         super().saveas(outdir)
         # if species_taxid is None:
@@ -156,9 +154,11 @@ class TrinucleotideModel(PolymorphismModel):
             # pickle.dump(self, fout)
             pickle.dump(self.event_rate | {"baseline": self.base_rate}, fout)
 
-    def count_gw_occurrences(
-        self, fasta: str, kmer_length: int = 3, mem: str = "12M", threads: int = 8
-    ) -> dict[str, int]:
+    def count_gw_occurrences(self, 
+                             fasta: str, 
+                             kmer_length: int = 3, 
+                             mem: str = "12M",
+                             threads: int = 8) -> dict[str, int]:
         if shutil.which("jellyfish") is None:
             raise ValueError(
                 "jellyfish is required. Please install using micromamba or conda."
@@ -305,11 +305,9 @@ class TrinucleotideModel(PolymorphismModel):
         )
         return VCF_with_context
 
-
 def main():
     import argparse
-
-    parser = argparse.ArgumentParser(description=""".""")
+    parser = argparse.ArgumentParser(description="""Null Hypothesis Definition. Trinucleotide Adjustment Algorithm.""")
     parser.add_argument("--vcf", type=str)
     parser.add_argument("--fasta", type=str)
     parser.add_argument("-o", type=str, default="models")
@@ -327,7 +325,6 @@ def main():
     model = TrinucleotideModel(offset=args.offset, threads=args.threads)
     model.fit(VCF_in=args.vcf, fasta=args.fasta)
     model.saveas(outdir=outdir)
-
 
 if __name__ == "__main__":
     main()

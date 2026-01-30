@@ -13,10 +13,7 @@ class PolymorphismDetector(BatchProcessor):
             reference = self.fasta_files[species_taxid]
             model.fit(VCF_in, reference)
             models[species_taxid] = model
-            outfile = (
-                outdir
-                / f"trinucleotide_model_event_rate_{model.offset}_{species_taxid}.pkl"
-            )
+            outfile = outdir.joinpath(f"trinucleotide_model_event_rate_{model.offset}_{species_taxid}.pkl")
             # model.saveas(outdir=self.outdir, species_taxid=species_taxid)
             with open(outfile, "wb") as f:
                 pickle.dump(model, f)

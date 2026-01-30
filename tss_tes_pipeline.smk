@@ -23,6 +23,8 @@ assert Path(INDIR).exists(), f"Input dir {INDIR} not found."
 assert GFF_DIR and Path(GFF_DIR).exists(), f"GFF dir {GFF_DIR} not found. Set gff_dir in config."
 assert GFF_TSS_TES_DIR and Path(GFF_TSS_TES_DIR).exists(), f"GFF dir {GFF_TSS_TES_DIR} not found. Set gff_tss_tes_dir in config."
 
+print(f"USING BIOTYPE: {USE_BIOTYPE}")
+
 OUTDIR = Path(INDIR).resolve()
 DENSITY_DIR = OUTDIR.joinpath("tss_tes_density")
 COVERAGE_DIR = OUTDIR.joinpath("gff_motif_coverage")
