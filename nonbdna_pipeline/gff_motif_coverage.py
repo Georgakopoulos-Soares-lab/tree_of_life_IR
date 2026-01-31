@@ -295,7 +295,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
         fin.close()
         coverage_df = merge_with_summary(assembly_summary=assembly_summary,
                                           outfile=outfile)
-        if coverage_df:
+        if coverage_df is not None:
             merged_outfile = self.outdir.joinpath(f"tss_tes_density_{pattern}_bucket_{bucket_id}_with_assembly_data.tsv.gz")
             coverage_df.to_csv(merged_outfile, mode="w", sep="\t", index=False, compression="gzip")
             logging.info(f"Merged density data with assembly summary and saved to `{merged_outfile}`.")
