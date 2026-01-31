@@ -100,9 +100,9 @@ rule motif_coverage_bucket:
         gff=GFF_DIR,
         pattern=PATTERN,
         gff_suffix=GFF_SUFFIX,
-        partition_col=(PARTITION if PARTITION else ""),
-        min_partition=(MIN_PARTITION if MIN_PARTITION else ""),
-        max_partition=(MAX_PARTITION if MAX_PARTITION else ""),
+        partition_col=PARTITION,
+        min_partition=MIN_PARTITION,
+        max_partition=MAX_PARTITION,
         use_biotype_flag=("--use_biotype" if USE_BIOTYPE in ("1", "true", "True", "yes") else ""),
         pseudo_flag=("--pseudogenes_to_genes" if PSEUDOGENES_TO_GENES in ("1", "true", "True", "yes") else "")
     wildcard_constraints:
