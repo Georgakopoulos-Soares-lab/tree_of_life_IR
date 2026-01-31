@@ -15,6 +15,9 @@ PATTERN = config.get("pattern", "IR")
 WINDOW_SIZE = int(config.get("window_size", 500))
 STRAND_POLARITY = int(config.get("strand_polarity", 0))
 USE_BIOTYPE = str(config.get("use_biotype", 0))
+MIN_PARTITION = config.get("min_partition")
+MAX_PARTITION = config.get("max_partition")
+PARTITION = config.get("partition_col")
 GFF_SUFFIX = config.get("gff_suffix", ".agat.gff")
 PSEUDOGENES_TO_GENES = str(config.get("pseudogenes_to_genes", 1))
 
@@ -97,6 +100,9 @@ rule motif_coverage_bucket:
         gff=GFF_DIR,
         pattern=PATTERN,
         gff_suffix=GFF_SUFFIX,
+        partition_col=(PARTITION if PARTITION else ""),
+        min_partition=(MIN_PARTITION if MIN_PARTITION else ""),
+        max_partition=(MAX_PARTITION if MAX_PARTITION else ""),
         use_biotype_flag=("--use_biotype" if USE_BIOTYPE in ("1", "true", "True", "yes") else ""),
         pseudo_flag=("--pseudogenes_to_genes" if PSEUDOGENES_TO_GENES in ("1", "true", "True", "yes") else "")
     wildcard_constraints:
@@ -108,11 +114,13 @@ rule motif_coverage_bucket:
             -p {params.pattern} \
             -i {params.indir} \
             -g {params.gff} \
+            --partition_col {params.partition_col} \
+            --min_partition {params.min_partition} \
+            --max_partition {params.max_partition} \
             --gff_suffix {params.gff_suffix} \
             {params.use_biotype_flag} \
             {params.pseudo_flag}
         """
-
 
 def _reduce_outputs(input, output) -> None:
     import gzip

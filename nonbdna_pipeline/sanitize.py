@@ -1,6 +1,6 @@
 import polars as pl
 
-nucleotides = {"a", "g", "c", "t"}
+NUCLEOTIDES = {"A", "G", "C", "T", "a", "g", "c", "t"}
 def sanitize_df(motif_df: pl.DataFrame) -> pl.DataFrame:
     motif_df = (
       motif_df
@@ -10,7 +10,7 @@ def sanitize_df(motif_df: pl.DataFrame) -> pl.DataFrame:
         )
         .filter(
           pl.col("sequence")
-            .map_elements(lambda seq: all(n in nucleotides for n in seq),
+            .map_elements(lambda seq: all(n in NUCLEOTIDES for n in seq),
                           return_dtype=pl.Boolean)
             )
        )
