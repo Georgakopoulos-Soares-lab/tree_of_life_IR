@@ -4,6 +4,9 @@ REPORT_DIR=.reports
 REPORT_FILE=$(REPORT_DIR)/pytest_report.txt
 # 
 GFF_INDIR=nonbdna_pipeline/gff_db  
+MIN_PARTITION=0
+MAX_PARTITION=9
+PARTITION="spacer_length"
 BUCKET=0
 PATTERN=IR
 
@@ -32,12 +35,16 @@ dag:
 snake:
 	bash submit_tss_tes.sh
 
+
 motif_run:
 	gff-motif-coverage nonbdna_pipeline/new_schedule_4_cf186650022b49b7b8c27d123dccc3ca.json \
 			--indir nonbdna_pipeline/extractions_IR \
 			--pattern $(PATTERN) \
 			--gff_indir $(GFF_INDIR) \
 			--bucket_id $(BUCKET) \
+			--partition_col $(PARTITION) \
+			--min_partition $(MIN_PARTITION) \
+			--max_partition $(MAX_PARTITION) \
  			--use_biotype \
 			--gff_suffix .gff
 

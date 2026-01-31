@@ -116,12 +116,15 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                             min_partition: Optional[int] = None,
                             max_partition: Optional[int] = None,
                             ) -> None:
-        if polarity:
-            raise NotImplementedError("Strand-specific processing not yet implemented.")
         gff_indir = Path(gff_indir).resolve()
         partition_list = ["."] 
+        motif_columns = ["Chromosome", "Start", "End"]
+        if polarity:
+            motif_columns.append("Strand")
+            raise NotImplementedError("Strand-specific processing not yet implemented.")
         if isinstance(partition_col, str) and isinstance(min_partition, int) and isinstance(max_partition, int):
             partition_list += list(range(min_partition, max_partition))
+            motif_columns.append("partition")
         else:
             partition_col = None
             min_partition = None 
@@ -175,33 +178,37 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                               pseudogenes_to_genes=pseudogenes_to_genes,
                               parse_biotype=use_biotype,
                               filter_on=self.valid_compartments
-            ).rename(columns={"start": "Start",
-                              "end": "End"})
+            ).rename(columns={
+                              "start": "Start",
+                              "end": "End"
+                              })
             if gff_df.shape[0] == 0:
                 logging.warning(f"No features found in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                 continue 
             biotypes = self.biotypes if use_biotype else ["."]
             df = self.read_motifs(extraction_file)
             if df.shape[0] == 0:
+                gff_df = gff_df.rename(columns={"seqID": "Chromosome"})
                 logging.warning(f"No motifs found in file `{extraction_file}`.")
-                compartments = gff_df["compartment"].unique().tolist()
                 for partition in partition_list:
                     for biotype in biotypes:
+                        if biotype != ".":
+                            gff_biotype_df = gff_df[gff_df["biotype"] == biotype].copy()
+                        else:
+                            gff_biotype_df = gff_df.copy()
+                        if gff_biotype_df.shape[0] == 0:
+                            continue
+                        compartments = gff_biotype_df["compartment"].unique().tolist()
                         for compartment in compartments:
-                            if biotype != ".":
-                                gff_df_temp = gff_df[(gff_df["biotype"] == biotype) & (gff_df["compartment"] == compartment)].copy()
-                            else:
-                                gff_df_temp = gff_df[gff_df["compartment"] == compartment].copy()
+                            gff_df_temp = gff_biotype_df[gff_biotype_df["compartment"] == compartment].copy()
                             total_merged_members = gff_df_temp.shape[0]
                             if total_merged_members == 0:
-                                compartment_length = 0
-                                total_compartments = 0
-                            else:
-                                merged_ranges = pr.PyRanges(gff_df_temp[["seqID", "Start", "End"]]).merge(strand=False)
-                                merged_df = merged_ranges.as_df()
-                                lengths = (merged_df["End"] - merged_df["Start"]).clip(lower=0)
-                                compartment_length = int(lengths.sum())
-                                total_compartments = merged_df.shape[0]
+                                continue
+                            merged_ranges = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]]).merge(strand=False)
+                            merged_df = merged_ranges.as_df()
+                            lengths = (merged_df["End"] - merged_df["Start"]).clip(lower=0)
+                            compartment_length = int(lengths.sum())
+                            total_compartments = merged_df.shape[0]
                             coverage_df = pd.DataFrame({
                                         "#assembly_accession": [accession_id],
                                         "pattern": [pattern],
@@ -228,11 +235,15 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                             )
                             wrote_header = True
                 continue
+            if partition_col not in df.columns:
+                raise KeyError(f"Partition column `{partition_col}` not found in motif extraction file `{extraction_file}` for accession `{accession_id}`.")
+            if partition_col:
+                df = df.rename(columns={partition_col: "partition"})
             df = df.rename(columns={"seqID": "Chromosome", 
                                     "start": "Start", 
                                     "end": "End", 
                                     "strand": "Strand"})
-            df_gr = pr.PyRanges(df)
+            df_gr = pr.PyRanges(df[motif_columns])
             # Why we need to loop
             # We are attempting to calculate the proportion of:
             # - Total Genic Region covered by motif base pairs 
@@ -249,11 +260,12 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                     logging.warning(f"No features found for biotype `{biotype}` in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                     continue
                 compartments = gff_df_temp["compartment"].unique().tolist()
-                if len(compartments) > 1:
-                    raise ValueError(f"Multiple compartments found for biotype `{biotype}` in GFF file `{gff_file}`. Expected a single compartment per biotype.")
-                compartment = compartments[0]
-                if compartment != "Gene":
-                    raise ValueError(f"Unexpected compartment `{compartment}` for biotype `{biotype}` in GFF file `{gff_file}`. Expected `gene` compartment.")
+                if biotype != ".":
+                    if len(compartments) > 1:
+                        raise ValueError(f"Multiple compartments found for biotype `{biotype}` in GFF file `{gff_file}`. Expected a single compartment per biotype.")
+                    compartment = compartments[0]
+                    if compartment != "Gene":
+                        raise ValueError(f"Unexpected compartment `{compartment}` for biotype `{biotype}` in GFF file `{gff_file}`. Expected `gene` compartment.")
                 gff_df_temp.loc[:, "Chromosome"] = gff_df_temp["seqID"] + ";" + gff_df_temp["compartment"]
                 orig_pr = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]])
                 merged_pr = orig_pr.merge(strand=False)
@@ -272,7 +284,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 gff_bed = BedTool.from_dataframe(gff_gr).sort() 
                 for partition in partition_list:
                     if partition != ".":
-                        df_partition = df_gr[df_gr[partition_col] == partition]
+                        df_partition = df_gr[df_gr.partition == partition]
                     else:
                         df_partition = df_gr
                     df_bed = BedTool.from_dataframe(

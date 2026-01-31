@@ -6,20 +6,16 @@ import logging
 import csv
 import threading
 from termcolor import colored
-from typing import ClassVar
+from typing import ClassVar, Optional
 from attr import field
 import attr
 from nonbdna_pipeline.logger import Logger
-from nonbdna_pipeline.utils import load_bucket
 from nonbdna_pipeline.stream_and_merge_bucket import StreamAndMerge
-
 @attr.s 
 class STREffectDetector(StreamAndMerge):
-
     STR_indir: Path = field(factory=lambda: Path("extractions_STR").resolve())
     outdir: Path = field(init=False)
     COVERAGE_FIELDS: ClassVar[list[str]] = ["total_hits", "overlapping_bp", "compartment_length", "coverage"]
-
     def __attrs_post_init__(self) -> None:
         self.STR_indir = Path(self.STR_indir).resolve()
         if not self.STR_indir.is_dir():
@@ -31,12 +27,12 @@ class STREffectDetector(StreamAndMerge):
     def process_bucket(self, bucket_id: int, 
                        pattern: str,
                        partition_col: str,
-                       min_partition: int = 0,
-                       max_partition: int = 9
+                       min_partition: Optional[int] = 0,
+                       max_partition: Optional[int] = 9
                        ) -> None:
         fieldnames = [
             "#assembly_accession",
-            "partition_col",
+            "pattern",
             "partition",
             "motif_explained_by_STR",
             "motif_region_bp",
@@ -50,10 +46,16 @@ class STREffectDetector(StreamAndMerge):
         ]
         # Fetch validated files
         infiles = self.load_validated_files_from_log(bucket_id=bucket_id, pattern=pattern)
-        total_files_processed = 0
         outfile = self.outdir.joinpath(f"bucket_{bucket_id}_STR_effects.tsv")
-        partitions = ["."] + list(range(min_partition, max_partition))
-
+        partitions = ["."]
+        usecols = ["seqID", "start", "end"]
+        if isinstance(partition_col, str) and isinstance(min_partition, int) and isinstance(max_partition, int):
+            partitions += list(range(min_partition, max_partition))
+            usecols.append(partition_col)
+        else:
+            partition_col = None
+            min_partition = None
+            max_partition = None
         # Setup Logger
         logger = Logger(total_files=len(infiles))
         logger._setup_logging(bucket_id=bucket_id)
@@ -77,9 +79,10 @@ class STREffectDetector(StreamAndMerge):
                 logging.warning(f"Absent motif file for {accession_id} within {self.indir}. (bucket {bucket_id}).")
                 continue
             motif_df = pd.read_table(infile, 
-                                     usecols=["seqID", "start", "end", partition_col], 
-                                     dtype={partition_col: int}
+                                     usecols=usecols,
                                      )
+            if partition_col is not None:
+                motif_df[partition_col] = motif_df[partition_col].astype(int)
             STR_df = pd.read_table(STR_file, usecols=["seqID", "start", "end"])
             STR_bed = BedTool.from_dataframe(STR_df).sort().merge()
 
@@ -109,10 +112,9 @@ class STREffectDetector(StreamAndMerge):
                 STR_explained_by_motif = str_cov["overlapping_bp"].sum()
                 STR_region_bp = str_cov["compartment_length"].sum()
                 STR_explained_by_motif_perc = round(1e2 * STR_explained_by_motif / STR_region_bp, 2) if STR_region_bp > 0 else 0.0
-
                 writer.writerow({
                     "#assembly_accession": accession_id,
-                    "partition_col": partition_col,
+                    "pattern": pattern,
                     "partition": partition,
                     "motif_explained_by_STR": motif_explained_by_STR,
                     "motif_region_bp": motif_region_bp,
@@ -135,7 +137,7 @@ def main():
     parser.add_argument("--pattern", type=str, default="IR", choices=["IR"])
     parser.add_argument("--STR_indir", type=str, default="extractions_STR")
     parser.add_argument("--min_partition", type=int, default=0)
-    parser.add_argument("--max_partition", type=int, default=8)
+    parser.add_argument("--max_partition", type=int, default=9)
     parser.add_argument("--outdir", type=str)
     parser.add_argument("--bucket_id", type=int)
     parser.add_argument("--partition", type=str, default="spacer_length")
