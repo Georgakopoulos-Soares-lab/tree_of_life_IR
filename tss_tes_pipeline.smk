@@ -74,7 +74,7 @@ rule tss_tes_bucket:
         window=WINDOW_SIZE,
         sp=STRAND_POLARITY
     wildcard_constraints:
-        bid="\d+"
+        bid=r"\d+"
     shell:
         r"""
         tss-tes-processor {params.schedule} \
@@ -100,7 +100,7 @@ rule motif_coverage_bucket:
         use_biotype_flag=("--use_biotype" if USE_BIOTYPE in ("1", "true", "True", "yes") else ""),
         pseudo_flag=("--pseudogenes_to_genes" if PSEUDOGENES_TO_GENES in ("1", "true", "True", "yes") else "")
     wildcard_constraints:
-        bid="\d+"
+        bid=r"\d+"
     shell:
         """
         gff-motif-coverage {params.schedule} \
