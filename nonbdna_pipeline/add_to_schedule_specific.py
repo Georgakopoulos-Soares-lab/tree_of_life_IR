@@ -2,6 +2,7 @@ def main():
     import argparse
     import json
     from pathlib import Path
+    import shutil
     from termcolor import colored
     from scheduling import MiniBucketScheduler
     parser = argparse.ArgumentParser(description="Rescheduler")
@@ -24,7 +25,15 @@ def main():
     for suffix in suffixes:
         infiles += [infile for infile in indir.glob(f"*.{suffix}")]
         infiles += [infile for infile in indir.glob(f"*.{suffix}.gz")]
-    infiles = list(set(infiles))
+    old_infiles = list(set(infiles))
+    infiles = []
+    for infile in old_infiles:
+        if ".fa" in infile.name or ".fasta" in infile.name:
+            new_name = infile.parent.joinpath(infile.name.replace(".fasta", ".fna").replace(".fa", ".fna"))
+            shutil.move(infile, new_name)
+            infiles.append(new_name)
+        else:
+            infiles.append(infile)
     # # 
     infiles = list(map(str, infiles))
     total_infiles = len(infiles)
