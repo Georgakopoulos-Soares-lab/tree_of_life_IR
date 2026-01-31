@@ -1,6 +1,7 @@
 import time
 import polars as pl 
 from pathlib import Path 
+import pybedtools
 from termcolor import colored
 from typing import Optional 
 import pandas as pd
@@ -71,6 +72,8 @@ def read_gff(gff_file: str,
             return "non_coding"
         if biotype == "protein_coding":
             return "protein_coding"
+        if biotype == "pseudogene":
+            return "pseudogene"
         return "non_coding"
     GFF_FIELDS = ["seqID", "source", "compartment", "start", "end", "score", "strand", "phase", "attributes"]
     df = pd.read_table(gff_file, 
@@ -79,6 +82,9 @@ def read_gff(gff_file: str,
                        names=GFF_FIELDS, 
                        dtype={"start": np.int32, 
                               "end": np.int32})
+    df = df[df["start"] < df["end"]].reset_index(drop=True)
+    if df.shape[0] == 0:
+        return df
     df.loc[:, "start"] = df["start"] - 1
     if end_to_one_bp:
         df.loc[:, "end"] = df["end"] - 1
@@ -91,10 +97,13 @@ def read_gff(gff_file: str,
             filter_on = set(filter_on)
             df = df[df["compartment"].isin(filter_on)]
         df = df.reset_index(drop=True)
+    if df.shape[0] == 0:
+        return df
     selected_columns = ["seqID", "start", "end", "compartment", "strand"]
     if parse_biotype:
         df.loc[df["compartment"] != "gene", "biotype"] = "."
         df.loc[df["compartment"] == "gene", "biotype"] = df.loc[df["compartment"] == "gene", "attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        df = df[~df["biotype"].isna()].reset_index(drop=True)
         df["biotype"] = df["biotype"].astype("string")
         selected_columns.append("biotype")
         if binary_biotype:
@@ -108,7 +117,8 @@ def read_gff(gff_file: str,
             "five_prime_UTR": "5'UTR",
             "three_prime_UTR": "3'UTR",
         }
-        df["compartment"] = df["compartment"].map(compartment_mapping)
+        for compartment, mapped_name in compartment_mapping.items():
+            df["compartment"] = df["compartment"].replace(compartment, mapped_name)
     return df[selected_columns]
 
 def expand_gff(gff_df, on: str, 
@@ -427,11 +437,15 @@ def main():
     parser.add_argument("-p", "--pattern", type=str, default='IR', choices=['IR', 'MR', 'STR'])
     parser.add_argument("--partition_col", type=str, default=None)
     parser.add_argument("--use_biotype", "-b", default=None)
+    parser.add_argument("--tmpdir", type=str, default="garbage")
     parser.add_argument("--assembly_summary", "-asm", type=str, 
                         default="data/assembly_summary_with_tree.csv.gz", 
                         help="Path to assembly summary file to merge with density data.")
     parser.add_argument("--ignore_errors", action="store_true", help="Whether to ignore errors when loading validated files from log.")
     args = parser.parse_args()
+    tmpdir = Path(args.tmpdir)
+    tmpdir.mkdir(exist_ok=True)
+    pybedtools.helpers.set_tempdir(tmpdir)
 
     TSSTESProcessor(indir=args.indir, 
                     schedule=args.schedule,
@@ -444,4 +458,5 @@ def main():
                                                            ignore_errors=args.ignore_errors,
                                                            use_biotype=args.use_biotype,
                                                            )
+    pybedtools.helpers.cleanup(remove_all=True)
 if __name__ == "__main__": main()

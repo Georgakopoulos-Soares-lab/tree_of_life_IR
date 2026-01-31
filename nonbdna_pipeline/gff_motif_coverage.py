@@ -11,6 +11,7 @@ from typing import Optional, ClassVar
 import attr
 from attr import field
 from pybedtools import BedTool
+import pybedtools
 from nonbdna_pipeline.stream_and_merge_bucket import StreamAndMerge 
 from nonbdna_pipeline.pwm_density import PWMExtractor 
 from nonbdna_pipeline.tss_tes_processing import * 
@@ -267,20 +268,16 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                     if compartment != "Gene":
                         raise ValueError(f"Unexpected compartment `{compartment}` for biotype `{biotype}` in GFF file `{gff_file}`. Expected `gene` compartment.")
                 gff_df_temp.loc[:, "Chromosome"] = gff_df_temp["seqID"] + ";" + gff_df_temp["compartment"]
+                # Merge Starts
                 orig_pr = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]])
                 merged_pr = orig_pr.merge(strand=False)
                 merged_df = merged_pr.as_df()
-                joined = merged_pr.join(orig_pr).as_df()
-                counts = joined.groupby(["Chromosome", "Start", "End"]).size().reset_index(name="merged_count")
-                merged_df = merged_df.merge(counts, on=["Chromosome", "Start", "End"], how="left")
-                merged_df["merged_count"] = merged_df["merged_count"].astype(int)
-                gff_gr = (
-                        merged_df
-                        .assign(
-                            seqID=lambda ds: ds["Chromosome"].str.split(";", expand=True)[0],
-                            compartment=lambda ds: ds["Chromosome"].str.split(";", expand=True)[1]
-                        )[["seqID", "Start", "End", "compartment", "merged_count"]]
-                )
+                # Merge Ends
+                compartment_counts = gff_df_temp["compartment"].value_counts().to_dict()
+                merged_df["compartment"] = merged_df["Chromosome"].str.split(";", expand=True)[1]
+                merged_df["seqID"] = merged_df["Chromosome"].str.split(";", expand=True)[0]
+                merged_df.loc[:, "merged_count"] = merged_df["compartment"].map(compartment_counts)
+                gff_gr = merged_df[["seqID", "Start", "End", "compartment", "merged_count"]]
                 gff_bed = BedTool.from_dataframe(gff_gr).sort() 
                 for partition in partition_list:
                     if partition != ".":
@@ -361,9 +358,15 @@ def main():
     parser.add_argument("--partition_col", type=str, default=None)
     parser.add_argument("--min_partition", type=int, default=None)
     parser.add_argument("--max_partition", type=int, default=None)
+    parser.add_argument("--tmpdir", type=str, default="garbage")
     parser.add_argument("--pseudogenes_to_genes", action="store_true", default=True)
     parser.add_argument("--assembly_summary", type=str, default="data/assembly_summary_with_tree.csv.gz")
     args = parser.parse_args()
+
+    tmpdir = Path(args.tmpdir)
+    tmpdir.mkdir(exist_ok=True)
+    pybedtools.helpers.set_tempdir(tmpdir)
+
     GFFMotifCoverageProcessor(
         indir=args.indir,
         schedule=args.schedule,
@@ -378,3 +381,4 @@ def main():
                                 min_partition=args.min_partition,
                                 max_partition=args.max_partition,
         )
+    pybedtools.helpers.cleanup(remove_all=True)

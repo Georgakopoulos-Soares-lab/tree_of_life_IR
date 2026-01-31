@@ -118,8 +118,7 @@ rule motif_coverage_bucket:
             --min_partition {params.min_partition} \
             --max_partition {params.max_partition} \
             --gff_suffix {params.gff_suffix} \
-            {params.use_biotype_flag} \
-            {params.pseudo_flag}
+            {params.use_biotype_flag}
         """
 
 def _reduce_outputs(input, output) -> None:
