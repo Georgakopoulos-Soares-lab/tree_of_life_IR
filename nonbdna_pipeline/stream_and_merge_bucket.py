@@ -3,14 +3,14 @@ from pathlib import Path
 from tqdm import tqdm
 from termcolor import colored
 import gzip
-from typing import Optional
+from typing import Optional, ClassVar
 import pandas as pd
 from collections import defaultdict
 from pybedtools import BedTool
-from nonbdna_pipeline.minditool import MindiTool
 import re
 from attr import field
 import attr
+from nonbdna_pipeline.minditool import MindiTool
 
 @attr.s
 class StreamAndMerge:
@@ -25,6 +25,7 @@ class StreamAndMerge:
     GA_threshold: float = field(converter=float, default=0.9, init=True, repr=True)
     GT_threshold: float = field(converter=float, default=0.9, init=True, repr=True)
     AT_threshold: float = field(converter=float, default=0.8, init=True, repr=True)
+    NUCLEOTIDES: ClassVar[set[str]] = {"A", "G", "C", "T", "a", "g", "c", "t"}
 
     def __attrs_post_init__(self) -> None:
         self.indir = Path(self.indir).resolve()
@@ -49,6 +50,11 @@ class StreamAndMerge:
     def load_bucket(self, bucket_id: int) -> list[str]:
         with self.schedule.open("r", encoding="UTF-8") as f:
             return json.load(f)[str(bucket_id)]
+        
+    def read_motifs(self, extraction_file: str) -> pd.DataFrame:
+        df = pd.read_table(extraction_file)
+        df = df[df["sequence"].apply(lambda x: all(base in StreamAndMerge.NUCLEOTIDES for base in x))].reset_index(drop=True)
+        return df
 
     @staticmethod
     def detect_STR_coverage(seq: str) -> float:
@@ -200,7 +206,7 @@ class StreamAndMerge:
 
                 # Remove rows with non-nucleotide characters in the arm sequence
                 if df.shape[0] > 0:
-                    df = df[df["sequence_of_arm"].apply(lambda x: all(i in nucleotides for i in x))].reset_index(drop=True)
+                    df = df[df["sequence"].apply(lambda x: all(base in StreamAndMerge.NUCLEOTIDES for base in x))].reset_index(drop=True)
                 if df.shape[0] < shape_before:
                     print(colored(f"Warning! Df shape was altered from {shape_before} to {df.shape[0]}.", "red"))
 

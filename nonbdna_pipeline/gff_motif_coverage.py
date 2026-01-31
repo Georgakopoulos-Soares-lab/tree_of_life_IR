@@ -1,11 +1,8 @@
 import time
 import polars as pl 
 from pathlib import Path 
-from typing import ClassVar
 from termcolor import colored
-from typing import Optional 
 import pandas as pd
-import numpy as np
 import pyranges as pr
 import threading 
 import gzip
@@ -29,7 +26,7 @@ def merge_with_summary(assembly_summary: str, outfile: str):
                                                "gc_percent": float,
                                                "genome_size": int},
                                                low_memory=False
-                                                )
+                                    )
         except Exception as e:
             logging.error(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.")
             print(colored(f"Error reading assembly summary file `{assembly_summary}`: {e}. Skipping merge with assembly data.", "red"))
@@ -115,9 +112,20 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                             pseudogenes_to_genes: bool = True,
                             partition_col: Optional[str] = None,
                             assembly_summary: Optional[str] = None,
-                            polarity: bool = False
+                            polarity: bool = False,
+                            min_partition: Optional[int] = None,
+                            max_partition: Optional[int] = None,
                             ) -> None:
+        if polarity:
+            raise NotImplementedError("Strand-specific processing not yet implemented.")
         gff_indir = Path(gff_indir).resolve()
+        partition_list = ["."] 
+        if isinstance(partition_col, str) and isinstance(min_partition, int) and isinstance(max_partition, int):
+            partition_list += list(range(min_partition, max_partition))
+        else:
+            partition_col = None
+            min_partition = None 
+            max_partition = None
         # LOGGING
         tracker = GFFMotifCoverageProcessor._TrackProgress(
             bucket_id=bucket_id,
@@ -131,6 +139,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
         FIELDS = ["seqID", "start", "end", "compartment", "merged_count"] + GFFMotifCoverageProcessor.COVERAGE_FIELDS
         EXPECTED_FIELDS = ["#assembly_accession", 
                     "biotype", 
+                    "partition",
                     "pattern", 
                     "compartment", 
                     "total_bases", 
@@ -144,7 +153,6 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                     "total_compartments", 
                     "pct_at_least_one",
                     "total_merged_members"]
-
         infiles = self.load_validated_files_from_log(bucket_id=bucket_id, pattern=pattern)
         tracker.total_records = len(infiles)
         outfile = self.outdir.joinpath(f"gff_motif_coverage_{pattern}_bucket_{bucket_id}.tsv.gz")
@@ -172,48 +180,59 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             if gff_df.shape[0] == 0:
                 logging.warning(f"No features found in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                 continue 
-
             biotypes = self.biotypes if use_biotype else ["."]
-            df = pd.read_table(extraction_file)
-            if partition_col:
-                # partitions += list(range(min_partition, max_partition))
-                raise NotImplementedError("Partitioning not yet implemented.")
+            df = self.read_motifs(extraction_file)
             if df.shape[0] == 0:
                 logging.warning(f"No motifs found in file `{extraction_file}`.")
                 compartments = gff_df["compartment"].unique().tolist()
-                for biotype in biotypes:
-                    for compartment in compartments:
-                        coverage_df = pd.DataFrame({
-                            "#assembly_accession": [accession_id],
-                            "pattern": [pattern],
-                            "compartment": [compartment],
-                            "biotype": [biotype],
-                            "total_bases": [0],
-                            "compartment_length": [0],
-                            "total_compartments": [0],
-                            "pct_at_least_one": [0.0],
-                            "min_coverage": [0.0],
-                            "max_coverage": [0.0],
-                            "avg_coverage": [0.0],
-                            "median_coverage": [0.0],
-                            "std_coverage": [0.0],
-                            "total_merged_members": [0],
-                            "total_coverage": [0.0]
-                        })
-                        coverage_df[EXPECTED_FIELDS].to_csv(fin, 
-                                       sep="\t", 
-                                       index=False, 
-                                       header=not wrote_header)
-                        wrote_header = True
-                continue 
+                for partition in partition_list:
+                    for biotype in biotypes:
+                        for compartment in compartments:
+                            if biotype != ".":
+                                gff_df_temp = gff_df[(gff_df["biotype"] == biotype) & (gff_df["compartment"] == compartment)].copy()
+                            else:
+                                gff_df_temp = gff_df[gff_df["compartment"] == compartment].copy()
+                            total_merged_members = gff_df_temp.shape[0]
+                            if total_merged_members == 0:
+                                compartment_length = 0
+                                total_compartments = 0
+                            else:
+                                merged_ranges = pr.PyRanges(gff_df_temp[["seqID", "Start", "End"]]).merge(strand=False)
+                                merged_df = merged_ranges.as_df()
+                                lengths = (merged_df["End"] - merged_df["Start"]).clip(lower=0)
+                                compartment_length = int(lengths.sum())
+                                total_compartments = merged_df.shape[0]
+                            coverage_df = pd.DataFrame({
+                                        "#assembly_accession": [accession_id],
+                                        "pattern": [pattern],
+                                        "partition": [partition],
+                                        "compartment": [compartment],
+                                        "biotype": [biotype],
+                                        "total_bases": [0],
+                                        "compartment_length": [compartment_length],
+                                        "total_compartments": [total_compartments],
+                                        "pct_at_least_one": [0.0],
+                                        "min_coverage": [0.0],
+                                        "max_coverage": [0.0],
+                                        "avg_coverage": [0.0],
+                                        "median_coverage": [0.0],
+                                        "std_coverage": [0.0],
+                                        "total_merged_members": [total_merged_members],
+                                        "total_coverage": [0.0]
+                                    })
+                            coverage_df[EXPECTED_FIELDS].to_csv(
+                                fin,
+                                sep="\t",
+                                index=False,
+                                header=not wrote_header,
+                            )
+                            wrote_header = True
+                continue
             df = df.rename(columns={"seqID": "Chromosome", 
                                     "start": "Start", 
                                     "end": "End", 
                                     "strand": "Strand"})
-            # if polarity:
-            #   df = calculate_strand_polarity(df, pattern=pattern)
-            df_gr = pr.PyRanges(df).merge(strand=False).as_df()
-            df_bed = BedTool.from_dataframe(df_gr).sort()
+            df_gr = pr.PyRanges(df)
             # Why we need to loop
             # We are attempting to calculate the proportion of:
             # - Total Genic Region covered by motif base pairs 
@@ -221,8 +240,6 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             # Instead of (X/Y) we will computing (X+ε/Y+μ)
             # Also, when we estimate protein coding regions, they may overlap with non coding regions
             # they usually do (lncRNAs on the opposite strand), thus we have to perform the computation separately
-
-            # # #
             for biotype in biotypes:
                 if biotype != ".":
                     gff_df_temp = gff_df[gff_df["biotype"] == biotype].copy()
@@ -231,6 +248,12 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 if gff_df_temp.shape[0] == 0:
                     logging.warning(f"No features found for biotype `{biotype}` in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                     continue
+                compartments = gff_df_temp["compartment"].unique().tolist()
+                if len(compartments) > 1:
+                    raise ValueError(f"Multiple compartments found for biotype `{biotype}` in GFF file `{gff_file}`. Expected a single compartment per biotype.")
+                compartment = compartments[0]
+                if compartment != "Gene":
+                    raise ValueError(f"Unexpected compartment `{compartment}` for biotype `{biotype}` in GFF file `{gff_file}`. Expected `gene` compartment.")
                 gff_df_temp.loc[:, "Chromosome"] = gff_df_temp["seqID"] + ";" + gff_df_temp["compartment"]
                 orig_pr = pr.PyRanges(gff_df_temp[["Chromosome", "Start", "End"]])
                 merged_pr = orig_pr.merge(strand=False)
@@ -239,7 +262,6 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                 counts = joined.groupby(["Chromosome", "Start", "End"]).size().reset_index(name="merged_count")
                 merged_df = merged_df.merge(counts, on=["Chromosome", "Start", "End"], how="left")
                 merged_df["merged_count"] = merged_df["merged_count"].astype(int)
-
                 gff_gr = (
                         merged_df
                         .assign(
@@ -248,7 +270,17 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                         )[["seqID", "Start", "End", "compartment", "merged_count"]]
                 )
                 gff_bed = BedTool.from_dataframe(gff_gr).sort() 
-                coverage_df = ( 
+                for partition in partition_list:
+                    if partition != ".":
+                        df_partition = df_gr[df_gr[partition_col] == partition]
+                    else:
+                        df_partition = df_gr
+                    df_bed = BedTool.from_dataframe(
+                                                    df_partition
+                                                    .merge(strand=False)
+                                                    .as_df()
+                                                    ).sort()
+                    coverage_df = ( 
                         pl.read_csv( 
                             gff_bed.coverage(df_bed).fn,
                             has_header=False,
@@ -278,18 +310,19 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                             pl.lit(accession_id).alias("#assembly_accession"),
                             biotype=pl.lit(biotype),
                             pattern=pl.lit(pattern),
+                            partition=pl.lit(partition),
                         )
-                )
-                (
-                    coverage_df.select(EXPECTED_FIELDS)
-                    .to_pandas()
-                    .to_csv(fin, 
-                            sep="\t", 
-                            index=False, 
-                            header=not wrote_header)
-                )
-                wrote_header = True
-                # coverage_df.write_csv(fin, separator="\t", include_header=file_idx==1)
+                        .select(EXPECTED_FIELDS)
+                        .to_pandas()
+                    )
+                    (
+                        coverage_df.to_csv(
+                                fin, 
+                                sep="\t", 
+                                index=False, 
+                                header=not wrote_header)
+                    )
+                    wrote_header = True
             self.files_processed += 1
         logger.join(timeout=1.0)
         fin.close()
@@ -313,6 +346,9 @@ def main():
     parser.add_argument("--gff_indir", "-g", type=str)
     parser.add_argument("--gff_suffix", type=str, default=".agat.gff")
     parser.add_argument("--use_biotype", action="store_true", default=False)
+    parser.add_argument("--partition_col", type=str, default=None)
+    parser.add_argument("--min_partition", type=int, default=None)
+    parser.add_argument("--max_partition", type=int, default=None)
     parser.add_argument("--pseudogenes_to_genes", action="store_true", default=True)
     parser.add_argument("--assembly_summary", type=str, default="data/assembly_summary_with_tree.csv.gz")
     args = parser.parse_args()
@@ -325,5 +361,8 @@ def main():
                                 pattern=args.pattern,
                                 gff_indir=args.gff_indir,
                                 use_biotype=args.use_biotype,
-                                pseudogenes_to_genes=args.pseudogenes_to_genes
-                            )
+                                pseudogenes_to_genes=args.pseudogenes_to_genes,
+                                partition_col=args.partition_col,
+                                min_partition=args.min_partition,
+                                max_partition=args.max_partition,
+        )

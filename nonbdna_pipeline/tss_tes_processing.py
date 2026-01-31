@@ -47,7 +47,8 @@ def read_gff(gff_file: str,
              pseudogenes_to_genes: bool = True, 
              filter_on: Optional[str] = None,
              parse_biotype: bool = False,
-             binary_biotype: bool = True) -> pl.DataFrame:
+             binary_biotype: bool = True,
+             change_compartment_names: bool = True) -> pl.DataFrame:
     def _parse_attributes(attributes: str, 
                           attribute: str,
                           early_stop: bool = True,
@@ -64,6 +65,8 @@ def read_gff(gff_file: str,
     def _map_biotype(biotype: str) -> str:
         # Treat missing or unknown biotypes as non_coding so genes that
         # don't explicitly state protein_coding are classified as non_coding
+        if biotype == ".":
+            return "."
         if pd.isna(biotype):
             return "non_coding"
         if biotype == "protein_coding":
@@ -89,28 +92,23 @@ def read_gff(gff_file: str,
             df = df[df["compartment"].isin(filter_on)]
         df = df.reset_index(drop=True)
     selected_columns = ["seqID", "start", "end", "compartment", "strand"]
-    if parse_biotype and binary_biotype:
-        # parse gene_biotype and make sure the column is a string dtype
-        biotype_series = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
-        # Use pandas string dtype to avoid assignments into float columns (NaNs can create float dtype)
-        biotype_series = biotype_series.astype("string")
-        mask = df["compartment"] == "gene"
-        # map gene biotypes to binary categories for gene rows on the temporary series
-        biotype_series.loc[mask] = biotype_series.loc[mask].apply(_map_biotype)
-        # set non-gene compartments to a literal dot
-        biotype_series.loc[~mask] = "."
-        # assign the fully-constructed string series back to the DataFrame in one step
-        df.loc[:, "biotype"] = biotype_series
+    if parse_biotype:
+        df.loc[df["compartment"] != "gene", "biotype"] = "."
+        df.loc[df["compartment"] == "gene", "biotype"] = df.loc[df["compartment"] == "gene", "attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
+        df["biotype"] = df["biotype"].astype("string")
         selected_columns.append("biotype")
-    elif parse_biotype:
-        # parse gene_biotype and ensure string dtype
-        biotype_series = df["attributes"].apply(lambda y: _parse_attributes(y, attribute="gene_biotype"))
-        biotype_series = biotype_series.astype("string")
-        mask = df["compartment"] == "gene"
-        # For non-gene compartments set biotype to "."; keep gene biotypes
-        biotype_series.loc[~mask] = "."
-        df.loc[:, "biotype"] = biotype_series
-        selected_columns.append("biotype")
+        if binary_biotype:
+            df["biotype"] = df["biotype"].apply(_map_biotype)
+    if change_compartment_names:
+        compartment_mapping = {
+            "exon": "Exon",
+            "intron": "Intron",
+            "pseudogene": "Pseudogene",
+            "gene": "Gene",
+            "five_prime_UTR": "5'UTR",
+            "three_prime_UTR": "3'UTR",
+        }
+        df["compartment"] = df["compartment"].map(compartment_mapping)
     return df[selected_columns]
 
 def expand_gff(gff_df, on: str, 
@@ -299,7 +297,7 @@ class TSSTESProcessor(StreamAndMerge):
                 logging.warning(f"No features found in GFF file `{gff_file}`. Skipping accession `{accession_id}`.")
                 continue 
 
-            df = pd.read_table(extraction_file)
+            df = self.read_motifs(extraction_file)
             if partition_col:
                 # partitions += list(range(min_partition, max_partition))
                 raise NotImplementedError("Partitioning not yet implemented.")
