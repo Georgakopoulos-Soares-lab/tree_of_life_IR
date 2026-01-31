@@ -172,30 +172,6 @@ def calculate_strand_polarity(df, pattern: str, THRESHOLD: float = 0.8) -> pd.Da
         raise ValueError(f"Strand polarity calculation not implemented for pattern `{pattern}`.")
     return df
 
-def bootstrap_sample_density(density_df: pd.DataFrame, 
-                             taxonomic_level: str = "species", 
-                             n_samples: int = 1000, 
-                             window_size: int = 500,
-                             alpha: float = 0.05) -> dict[str, pd.DataFrame]:
-    multiple_loci = list(map(str, range(-window_size, window_size+1)))
-    density_df = density_df.groupby(taxonomic_level, as_index=False).agg({loci: "sum" for loci in multiple_loci})
-    bootstrap_results = dict()
-    bootstrap_df = []
-    for _ in range(n_samples):
-        sample_df = density_df.sample(frac=1.0, replace=True)
-        sample_df_sum = sample_df[multiple_loci].sum()
-        sample_df_avg = sample_df_sum / sample_df_sum.mean()
-        bootstrap_df.append(sample_df_avg)
-    bootstrap_df = pd.concat(bootstrap_df)
-    ci_lower = bootstrap_df.quantile(alpha/2)
-    ci_upper = bootstrap_df.quantile(1-alpha/2)
-    bootstrap_results = {
-        "average": density_df / density_df[multiple_loci].mean(),
-        "ci_lower": ci_lower,
-        "ci_upper": ci_upper
-    }
-    return bootstrap_results
-
 @attr.s
 class TSSTESProcessor(StreamAndMerge):
     window_size: int = field(converter=int, default=500)

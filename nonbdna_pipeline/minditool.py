@@ -17,9 +17,7 @@ import pandas as pd
 from utils import parse_fasta
 import attr 
 from attr import field
-
 csv.field_size_limit(sys.maxsize)
-
 @attr.s
 class MindiTool:
     TAIL_FIELDS: ClassVar[list[str]] = ["seqID", 
