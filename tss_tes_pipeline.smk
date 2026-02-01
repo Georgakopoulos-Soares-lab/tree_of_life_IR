@@ -2,6 +2,7 @@
 import os
 import json
 from pathlib import Path
+import tarfile
 
 # Prefer config file; can override with --configfile
 configfile: "nonbdna_pipeline/config_IR.yaml"

@@ -6,9 +6,12 @@ import gzip
 def bootstrap_sample_density(density_df: pd.DataFrame, 
                              rank: str, 
                              taxonomy: str,
+                             site: str,
                              bootstrap_taxonomic_level: str = "species",
+                             biotype: str = ".",
                              n_samples: int = 1000, 
                              window_size: int = 500,
+                             polarity: str = ".",
                              alpha: float = 0.05) -> dict[str, pd.DataFrame]:
     """
     Perform bootstrap sampling on density dataframe to calculate enrichment confidence intervals.
@@ -17,8 +20,20 @@ def bootstrap_sample_density(density_df: pd.DataFrame,
         raise KeyError(f"Taxonomic rank `{rank}` not found in density dataframe columns.")
     if bootstrap_taxonomic_level not in density_df:
         raise KeyError(f"Taxonomic level `{bootstrap_taxonomic_level}` not found in density dataframe columns.")
-    density_df = density_df[density_df[rank] == taxonomy].reset_index(drop=True)
+    for col in ["biotype", "polarity"]:
+        if col not in density_df:
+            raise KeyError(f"`{col}` column not found in density dataframe columns.")
+    density_df = (
+                    density_df[
+                            (density_df[rank] == taxonomy)
+                            & (density_df["site"] == site) 
+                            & (density_df["biotype"] == biotype)
+                            & (density_df["polarity"] == polarity)
+                            ]
+                        .reset_index(drop=True)
+                )
     RANGE = list(map(str, range(-window_size, window_size+1)))
+
     # Calculate enrichment across window
     window_occurrences = density_df[RANGE].sum(axis=1)
     window_average = window_occurrences.mean()
@@ -50,12 +65,22 @@ def main():
     import argparse 
     parser = argparse.ArgumentParser()
     parser.add_argument("density_file", type=str)
-    parser.add_argument("--alpha", type=float, default=0.05)
-    parser.add_argument("--n_samples", type=int, default=1000)
-    parser.add_argument("--window_size", type=int, default=500)
-    parser.add_argument("--rank", type=str, default="domain")
-    parser.add_argument("--taxonomy", type=str, default="Bacteria")
-    parser.add_argument("--bootstrap_taxonomic_level", type=str, default="family")
+    parser.add_argument("--alpha", "-a", type=float, default=0.05)
+    parser.add_argument("--n_samples", "-n", type=int, default=1000)
+    parser.add_argument("--window_size", "-w", type=int, default=500)
+    parser.add_argument("--rank", "-r", type=str, default="domain")
+    parser.add_argument("--taxonomy", "-t", type=str, default="Bacteria")
+    parser.add_argument("--polarity", "-p", type=str, default=".")
+    parser.add_argument("--biotype", "-b", type=str, default=".", 
+                        choices=["pseudogene", 
+                                 "protein_coding", 
+                                 "rRNA", 
+                                 "non_coding", 
+                                 "tRNA",
+                                 ".", 
+                                 "snRNA"]
+                                 )
+    parser.add_argument("--bootstrap_taxonomic_level", "-l", type=str, default="family")
     args = parser.parse_args()
 
     density_file = Path(args.density_file)
@@ -69,6 +94,8 @@ def main():
         rank=args.rank,
         taxonomy=args.taxonomy,
         bootstrap_taxonomic_level=args.bootstrap_taxonomic_level,
+        biotype=args.biotype,
+        polarity=args.polarity,
         n_samples=args.n_samples,
         window_size=args.window_size,
         alpha=args.alpha

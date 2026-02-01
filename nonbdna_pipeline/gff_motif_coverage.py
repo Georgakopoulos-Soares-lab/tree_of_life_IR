@@ -332,6 +332,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                                 header=not wrote_header)
                     )
                     wrote_header = True
+            pybedtools.helpers.cleanup(remove_all=True, verbose=True)
             self.files_processed += 1
         logger.join(timeout=1.0)
         fin.close()
