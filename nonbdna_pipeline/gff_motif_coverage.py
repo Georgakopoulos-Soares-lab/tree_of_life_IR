@@ -127,7 +127,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
             partition_list += list(range(min_partition, max_partition))
             motif_columns.append("partition")
         else:
-            partition_col = None
+            # partition_col = None
             min_partition = None 
             max_partition = None
         # LOGGING
@@ -236,7 +236,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                             )
                             wrote_header = True
                 continue
-            if partition_col not in df.columns:
+            if partition_col and partition_col not in df.columns:
                 raise KeyError(f"Partition column `{partition_col}` not found in motif extraction file `{extraction_file}` for accession `{accession_id}`.")
             if partition_col:
                 df = df.rename(columns={partition_col: "partition"})
@@ -332,7 +332,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
                                 header=not wrote_header)
                     )
                     wrote_header = True
-            pybedtools.helpers.cleanup(remove_all=True, verbose=True)
+            pybedtools.helpers.cleanup(remove_all=True, verbose=False)
             self.files_processed += 1
         logger.join(timeout=1.0)
         fin.close()
@@ -364,8 +364,8 @@ def main():
     parser.add_argument("--assembly_summary", type=str, default="data/assembly_summary_with_tree.csv.gz")
     args = parser.parse_args()
 
-    tmpdir = Path(args.tmpdir)
-    tmpdir.mkdir(exist_ok=True)
+    tmpdir = Path(args.tmpdir).joinpath(f"bucket_{args.bucket_id}")
+    tmpdir.mkdir(exist_ok=True, parents=True)
     pybedtools.helpers.set_tempdir(tmpdir)
 
     GFFMotifCoverageProcessor(
@@ -382,4 +382,4 @@ def main():
                                 min_partition=args.min_partition,
                                 max_partition=args.max_partition,
         )
-    pybedtools.helpers.cleanup(remove_all=True)
+    pybedtools.helpers.cleanup(remove_all=True, verbose=False)
