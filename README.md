@@ -10,16 +10,6 @@ This README shows a minimal workflow to install the package locally with pip and
  - system build tools for any compiled Python dependencies (if needed)
  - recommended: create an isolated virtual environment (venv or conda/micromamba)
 
-## Install
-
-```bash
-# from the repository root
-python -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e .
-```
-
 ## Requirements (optional)
 
 If you prefer installing a requirements file, create a `requirements.txt` with the dependencies below (example). Then install with:
@@ -31,16 +21,62 @@ pip install -r requirements.txt
 Example minimal `requirements.txt` (adjust versions as needed):
 
 ```
+scipy
+numpy
 pandas
 polars
 pyranges
 pybedtools
 termcolor
 attrs
-pytest
-pyyaml
 python-dotenv
 ```
+
+Additionally, you have to install bedtools, using:
+
+```
+conda install -c bioconda bedtools
+```
+
+Finally, we can install the package as follows:
+```
+pip install -e .
+```
+
+### Extract a single accession using MindiTool
+
+You have to download and compile non-B_gfa executable from here:
+
+```
+git clone git@github.com:abcsFrederick/non-B_gfa.git
+```
+
+If you want to extract non-B DNA from a single FASTA accession (for quick tests), use the internal `MindiTool` wrapper. Example Python usage:
+
+```python
+from nonbdna_pipeline.minditool import MindiTool
+import pandas as pd
+
+if __name__ == "__main__":
+        t = MindiTool(nonBDNA="/Users/nikolchantzi/biolab/non-B_gfa/gfa")
+        pattern = "IR"
+        accession = "GCF_000006765.1_ASM676v1_genomic.fna"
+        t.extract(accession, pattern=pattern)
+        df = pd.read_table(t.fn[pattern])
+        print(df.head())
+        t.sanitize(accession=accession, mode=pattern)
+
+        df = pd.read_table(t.fnp[pattern])
+        print(df.head())
+```
+
+You can download the provided accession using the NCBI datasets CLI toolkit as follows:
+
+```bash
+datasets download genome accession GCF_000006765.1 --include genome
+```
+
+This runs the underlying non-B-DNA binary on a single accession and writes processed `.processed.tsv` files into `tempdir` (or the current working directory if not set). Use this for quick checks before running the full per-bucket pipeline.
 
 ## Run nonbdna extraction (Stream & Merge)
 
@@ -58,30 +94,6 @@ python -m nonbdna_pipeline.stream_and_merge_bucket 0 \
 ```
 
 The script will read the schedule JSON file (default `schedule_tandem_extractions.json`), consult the log files under the configured `indir` to find validated processed extraction files, and write merged outputs under `indir/merged/<pattern>/`.
-
-### Extract a single accession using MindiTool
-
-If you want to extract non-B DNA from a single FASTA accession (for quick tests), use the internal `MindiTool` wrapper. Example Python usage:
-
-```python
-from nonbdna_pipeline.minditool import MindiTool
-
-# Either set env var `nonBDNA` to the path of the non-B-DNA binary
-# or pass it directly to the constructor
-mt = MindiTool(nonBDNA="/path/to/nonbdna_executable", tempdir="./tmp_mindi")
-
-# Run extraction for one accession (FASTA/FA/.gz). Pattern can be 'IR', 'MR', 'STR', etc.
-mt.extract("example/GC0000001.1_reference.fna", pattern=["IR"])  # returns the MindiTool instance
-
-# Get processed dataframe for that mode (if available)
-df_ir = mt.to_dataframe("IR")
-print(df_ir.head())
-
-# Clean up temporary processed files when done
-mt.cleanup()
-```
-
-This runs the underlying non-B-DNA binary on a single accession and writes processed `.processed.tsv` files into `tempdir` (or the current working directory if not set). Use this for quick checks before running the full per-bucket pipeline.
 
 ## Run taxonomic bootstrap (tss_tes_bootstrap)
 
