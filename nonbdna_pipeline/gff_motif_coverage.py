@@ -51,7 +51,16 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
     gff_suffix: str = field(init=True, default=".agat.gff")
     polarities: list[str] = field(init=False, factory=lambda: ["Template", "Non-Template"])
     biotypes: list[str] = field(init=False, factory=lambda: ["protein_coding", "non_coding", "."])
-    valid_compartments: set[str] = field(factory=lambda: {"gene", "exon", "CDS", "five_prime_UTR", "three_prime_UTR"})
+    valid_compartments: set[str] = field(factory=lambda: {"gene", "Gene", "GENE",
+                           "exon", 
+                           "Exon",
+                           "EXON",
+                           "CDS", 
+                           "five_prime_UTR", 
+                           "three_prime_UTR", 
+                           "intron", 
+                           "Intron",
+                           "INTRON"})
     COVERAGE_FIELDS: ClassVar[list[str]] = ["total_hits", "total_bases", "compartment_length", "coverage"]
     LOG_INTERVAL: int = 240
     FIELDS: list[str] = ["#assembly_accession",
@@ -339,7 +348,7 @@ class GFFMotifCoverageProcessor(StreamAndMerge):
         coverage_df = merge_with_summary(assembly_summary=assembly_summary,
                                           outfile=outfile)
         if coverage_df is not None:
-            merged_outfile = self.outdir.joinpath(f"tss_tes_density_{pattern}_bucket_{bucket_id}_with_assembly_data.tsv.gz")
+            merged_outfile = self.outdir.joinpath(f"gff_motif_coverage_{pattern}_bucket_{bucket_id}_with_assembly_data.tsv.gz")
             coverage_df.to_csv(merged_outfile, mode="w", sep="\t", index=False, compression="gzip")
             logging.info(f"Merged density data with assembly summary and saved to `{merged_outfile}`.")
         print(colored(f"Motif coverage processing for pattern {pattern} in bucket {bucket_id}.", "green"))
