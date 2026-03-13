@@ -307,26 +307,33 @@ class TSSTESProcessor(StreamAndMerge):
                 df_gr = df_gr.merge(strand=False)
 
             for site in self.sites:
-                expanded_gff_df = expand_gff(gff_df, on=site, window_size=self.window_size)
-                gff_gr = pr.PyRanges(expanded_gff_df)
-                df_joined = (
-                                gff_gr.join(df_gr)
-                                      .as_df()
-                                      .rename(columns={
-                                                        "Chromosome": "seqID",
-                                                        "Start": "start",
-                                                        "End": "end",
-                                                        "Strand": "strand",
-                                                        "Start_b": "motif_start",
-                                                        "End_b": "motif_end",
-                                                        "Strand_b": "motif_strand"}
-                                      )
-                        )
-                # In that case, directly emit zero vectors for this site across all partitions.
-                if df_joined.shape[0] == 0:
-                    zero_vec = {locus: 0 for locus in window_range}
-                    for partition in partitions:
-                        for biotype in biotypes:
+                for biotype in biotypes:
+                    if biotype != ".":
+                        gff_biotype_df = gff_df[gff_df["biotype"] == biotype].copy()
+                    else:
+                        gff_biotype_df = gff_df.copy()
+                    if gff_biotype_df.shape[0] == 0:
+                        logging.warning(f"No features found for biotype `{biotype}` in GFF file `{gff_file}`. Skipping.")
+                        continue
+                    expanded_gff_df = expand_gff(gff_biotype_df, on=site, window_size=self.window_size)
+                    gff_gr = pr.PyRanges(expanded_gff_df)
+                    df_joined = (
+                                    gff_gr.join(df_gr)
+                                          .as_df()
+                                          .rename(columns={
+                                                            "Chromosome": "seqID",
+                                                            "Start": "start",
+                                                            "End": "end",
+                                                            "Strand": "strand",
+                                                            "Start_b": "motif_start",
+                                                            "End_b": "motif_end",
+                                                            "Strand_b": "motif_strand"}
+                                          )
+                            )
+                    # In that case, directly emit zero vectors for this site across all partitions.
+                    if df_joined.shape[0] == 0:
+                        zero_vec = {locus: 0 for locus in window_range}
+                        for partition in partitions:
                             base_data = {
                                 "#assembly_accession": accession_id,
                                 "pattern": pattern,
@@ -342,52 +349,47 @@ class TSSTESProcessor(StreamAndMerge):
                                     writer.writerow(base_data | {"polarity": charge} | zero_vec)
                             else:
                                 writer.writerow(base_data | {"polarity": "."} | zero_vec)
-                    continue
-                assert df.shape[0] > 0, f"No motifs found after joining with GFF for file `{extraction_file}` and site `{site}`."
-                df_joined["overlap"] = (np.minimum(df_joined["end"], df_joined["motif_end"]) - np.maximum(df_joined["start"], df_joined["motif_start"])).clip(lower=0)
+                        continue
+                    assert df.shape[0] > 0, f"No motifs found after joining with GFF for file `{extraction_file}` and site `{site}`."
+                    df_joined["overlap"] = (np.minimum(df_joined["end"], df_joined["motif_end"]) - np.maximum(df_joined["start"], df_joined["motif_start"])).clip(lower=0)
 
-                if polarity:
-                    df_joined["strand_polarity"] = np.where(df_joined["strand"] == df_joined["motif_strand"], "Non-Template", "Template")
-
-                for partition in partitions:
-                    if partition != ".":
-                        df_partitioned = df_joined[df_joined[partition_col] == partition]
-                    else:
-                        df_partitioned = df_joined 
-                    df_partitioned = pl.from_pandas(df_partitioned)
                     if polarity:
-                        density_df = pwm.extract_template_density(df_partitioned, window_size=self.window_size, return_frame=False)
-                    else:
-                        density_df = pwm.extract_density(df_partitioned, window_size=self.window_size)
+                        df_joined["strand_polarity"] = np.where(df_joined["strand"] == df_joined["motif_strand"], "Non-Template", "Template")
 
-                    gene_overlap = (
-                        df_partitioned
-                        .select(["seqID", "start", "end"])
-                        .unique()
-                        .height
-                    )
-                    data = {
-                        "#assembly_accession": accession_id,
-                        "pattern": pattern,
-                        "site": site,
-                        "partition": str(partition),
-                        "overlapping_genes": gene_overlap,
-                    }
-                    if not isinstance(density_df, dict):
-                        density_df = {".": density_df}
-                    for biotype in biotypes:
-                        if biotype not in density_df:
-                            raise KeyError(f"Biotype `{biotype}` not found in density data for file `{extraction_file}`.")
+                    for partition in partitions:
+                        if partition != ".":
+                            df_partitioned = df_joined[df_joined[partition_col] == partition]
+                        else:
+                            df_partitioned = df_joined 
+                        df_partitioned = pl.from_pandas(df_partitioned)
+                        if polarity:
+                            density_df = pwm.extract_template_density(df_partitioned, window_size=self.window_size, return_frame=False)
+                        else:
+                            density_df = pwm.extract_density(df_partitioned, window_size=self.window_size)
+
+                        gene_overlap = (
+                            df_partitioned
+                            .select(["seqID", "start", "end"])
+                            .unique()
+                            .height
+                        )
                         pct_gene_overlap = round(1e2 * gene_overlap / total_genes[biotype], 2) if total_genes[biotype] > 0 else np.nan
-                        data.update({"pct_gene": pct_gene_overlap,
-                                     "total_genes": total_genes[biotype],
-                                     "biotype": biotype})
+                        data = {
+                            "#assembly_accession": accession_id,
+                            "pattern": pattern,
+                            "site": site,
+                            "biotype": biotype,
+                            "partition": str(partition),
+                            "overlapping_genes": gene_overlap,
+                            "pct_gene": pct_gene_overlap,
+                            "total_genes": total_genes[biotype],
+                        }
                         if polarity:
                             for charge in self.polarities:
-                                data.update({"polarity": charge} | {locus: int(counts) for locus, counts in zip(window_range, density_df[biotype][charge])})
+                                data.update({"polarity": charge} | {locus: int(counts) for locus, counts in zip(window_range, density_df[charge])})
                                 writer.writerow(data)
                         else:
-                            data.update({"polarity": "."} | {locus: int(counts) for locus, counts in zip(window_range, density_df[biotype])})
+                            data.update({"polarity": "."} | {locus: int(counts) for locus, counts in zip(window_range, density_df)})
                             writer.writerow(data)
             self.files_processed = file_idx
         thread.join(timeout=1)
@@ -412,7 +414,7 @@ def main():
     parser.add_argument("--bucket_id", "-bid", type=int, default=0)
     parser.add_argument("-p", "--pattern", type=str, default='IR', choices=['IR', 'MR', 'STR'])
     parser.add_argument("--partition_col", type=str, default=None)
-    parser.add_argument("--use_biotype", "-b", default=None)
+    parser.add_argument("--use_biotype", "-b", action="store_true", default=False)
     parser.add_argument("--tmpdir", type=str, default="garbage")
     parser.add_argument("--assembly_summary", "-asm", type=str, 
                         default="data/assembly_summary_with_tree.csv.gz", 

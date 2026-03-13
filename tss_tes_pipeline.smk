@@ -79,7 +79,8 @@ rule tss_tes_bucket:
         pattern=PATTERN,
         asm=ASM,
         window=WINDOW_SIZE,
-        sp=STRAND_POLARITY
+        sp=STRAND_POLARITY,
+        use_biotype_flag=("--use_biotype" if USE_BIOTYPE in ("1", "true", "True", "yes") else "")
     wildcard_constraints:
         bid=r"\d+"
     shell:
@@ -91,7 +92,8 @@ rule tss_tes_bucket:
             --window_size {params.window} \
             --strand_polarity {params.sp} \
             --bucket_id {wildcards.bid} \
-            --assembly_summary {params.asm}
+            --assembly_summary {params.asm} \
+            {params.use_biotype_flag}
         """
 
 
