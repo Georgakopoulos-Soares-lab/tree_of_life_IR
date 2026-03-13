@@ -3,6 +3,7 @@ import os
 import json
 from pathlib import Path
 import tarfile
+import pybedtools
 
 # Prefer config file; can override with --configfile
 configfile: "nonbdna_pipeline/config_IR.yaml"
@@ -33,6 +34,8 @@ OUTDIR = Path(INDIR).resolve()
 DENSITY_DIR = OUTDIR.joinpath("tss_tes_density")
 COVERAGE_DIR = OUTDIR.joinpath("gff_motif_coverage")
 
+Path("garbage").mkdir(exist_ok=True)
+pybedtools.helpers.set_tempdir("garbage")
 
 def _load_bucket_ids(schedule_path: str) -> list[int]:
     with open(schedule_path, "r", encoding="UTF-8") as f:
@@ -117,9 +120,8 @@ rule motif_coverage_bucket:
             -g {params.gff} \
             --partition_col {params.partition_col} \
             --min_partition {params.min_partition} \
-            --max_partition {params.max_partition} \
-            --gff_suffix {params.gff_suffix} \
-            {params.use_biotype_flag}
+	    --max_partition {params.max_partition} \
+            --gff_suffix {params.gff_suffix}
         """
 
 def _reduce_outputs(input, output) -> None:
