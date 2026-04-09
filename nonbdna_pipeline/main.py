@@ -8,6 +8,7 @@ import attr
 import pandas as pd
 from nonbdna_pipeline.minditool import MindiTool
 from nonbdna_pipeline.logger import Logger
+
 @attr.s
 class Extractor:
     outdir: Path = field(init=True, factory=lambda: Path(".").resolve())
@@ -15,6 +16,7 @@ class Extractor:
     logdir: Path = field(init=False)
     status: Path = field(init=False)
     def __attrs_post_init__(self) -> None:
+        self.outdir = Path(self.outdir)
         self.outdir.mkdir(exist_ok=True)
         self.extractions_dir = self.outdir.joinpath("extractions")
         self.extractions_dir.mkdir(exist_ok=True)
@@ -22,11 +24,11 @@ class Extractor:
         self.status = self.outdir.joinpath("status")
         self.status.mkdir(exist_ok=True)
 
-        logdir = self.outdir.joinpath("log_debug_nonbdna")
-        logdir.mkdir(exist_ok=True)
+        self.logdir = self.outdir.joinpath("log_debug_nonbdna")
+        self.logdir.mkdir(exist_ok=True)
 
-        subdir = self.outdir.joinpath("merged_bulk")
-        subdir.mkdir(exist_ok=True)
+        self.subdir = self.outdir.joinpath("merged_bulk")
+        self.subdir.mkdir(exist_ok=True)
         return
 
     @staticmethod
@@ -55,15 +57,14 @@ class Extractor:
             exit(0)
         else:
             logging.info(f"Loaded `{total_accessions}` accessions for bucket `{bucket_id}` in schedule `{schedule}`.")
-        if isinstance(pattern, str):
-            pattern = [pattern]
         fout = {}
-        extractions_outfile = self.subdir.joinpath(f"bucket_{bucket_id}_mode_{m}.tsv.gz")
-        empty_outfile = self.subdir.joinpath(f"bucket_{bucket_id}_mode_{m}_empty.tsv")
         # Initializing processing
         for m in pattern.split(","):
-            fout[m] = gzip.open(extractions_outfile, "wt"),  \
-                        open(empty_outfile, "w", encoding="UTF-8")
+            extractions_outfile = self.subdir.joinpath(f"bucket_{bucket_id}_mode_{m}.tsv.gz")
+            empty_outfile = self.subdir.joinpath(f"bucket_{bucket_id}_mode_{m}_empty.tsv")
+            fout[m] = gzip.open(extractions_outfile, "wt"), open(empty_outfile, "w", encoding="UTF-8")
+        # if isinstance(pattern, str):
+        #    pattern = [pattern]
         # Processing begins
         for i, accession in enumerate(infiles, 1):
             # logging.info(f"Processing accession: {accession}. Progress: {(i-1) * 1e2 / total_accessions:.2f}% (Bucket ID: {args.bucket_id}).")
