@@ -90,7 +90,7 @@ class StreamAndMerge:
                     grouped_id = re.search(r"(GC[AF]_.+)\.fna", line)
                     assembly_id = extract_id(grouped_id.group(1))
                     extracted_ids.add(assembly_id)
-                elif f"Completed processing for bucket {bucket_id} in schedule" in line:
+                elif f"Completed processing for bucket `{bucket_id}` in schedule" in line:
                     bucket_is_complete = True
         failed_ids -= extracted_ids
         extracted_ids = list(extracted_ids)
@@ -184,7 +184,7 @@ class StreamAndMerge:
                 if pattern == "STR":
                     mask = (
                             (df["consensus_repeats"] >= self.min_consensus_repeats)
-                                & ((df["sru"] == 3) | (df["sequence_length"] >= self.min_sequence_length))
+                                & (df["sequence_length"] >= self.min_sequence_length)
                                 & (df["sru"] <= 9)
                                 & (df["sru"] >= 1)
                             )
