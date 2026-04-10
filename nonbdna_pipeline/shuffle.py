@@ -20,7 +20,7 @@ def parse_fasta(accession):
 
 def shuffle_genome(fasta, outdir, level = 2):
     name = extract_name(fasta)
-    MAX = 1_000
+    MAX = 1_000_000
     outfile_shuffle = Path(f"{outdir}/{name}_level_{level}.shuffled.fna")
     if outfile_shuffle.is_file():
         return 
