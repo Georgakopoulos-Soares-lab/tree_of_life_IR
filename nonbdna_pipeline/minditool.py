@@ -42,7 +42,7 @@ class MindiTool:
     def __attrs_post_init__(self) -> None:
         load_dotenv()
         if self.nonBDNA is None:
-            self.nonBDNA = os.getenv('nonBDNA')
+            self.nonBDNA = Path("./gfa").resolve()
         if self.tempdir is None:
             self.tempdir = Path().cwd()
         else:
