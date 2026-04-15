@@ -422,9 +422,6 @@ class MindiTool:
                     # print(f"There was a change of record for {accession=} due to end of sequence {end} > {fasta_length} (mode {mode}).")
                 # Process STR
                 if mode == "STR":
-                    # consensus_repeats, remainder = row['Repeated'][1:].split('+')
-                    # consensus_repeats = int(consensus_repeats)
-                    # remainder = int(remainder)
                     sru = len(sequence_of_arm)
                     sequence = sequence[:length - length%sru]
                     length -= length % sru
@@ -436,8 +433,10 @@ class MindiTool:
                         end = start + length
                         # print(f"There was a change of record for {accession=} due to STR processing (mode {mode}).")
                         logging.warning(f"There was a change of record for {accession=} due to STR processing (mode {mode}).")
+                    
                     new_row["consensus_repeats"] = consensus_repeats
                     new_row["sru"] = sru
+                        
                 # Process STR
                 fasta_seq = seq[start: end].lower()
                 # general assertions
@@ -487,16 +486,10 @@ class MindiTool:
                     assert sru * consensus_repeats == len(fasta_seq) == length == end - start
 
                     # non extendable STRs
-                    if start > sru:
-                        assert sequence_of_arm * (consensus_repeats + 1) != fasta_seq[start-sru:end]
-                    if end + sru < fasta_length:
-                        assert sequence_of_arm * (consensus_repeats + 1) != fasta_seq[start:end+sru]
-                    # if sequence_of_arm * consensus_repeats != fasta_seq:
-                    #   logging.error(f"Skipping bad record {row}.")
-                    #    continue
-                    # elif sru * consensus_repeats != len(fasta_seq):
-                    #   logging.error(f"Skipping bad record {row}.")
-                    #    continue
+                    if start >= sru:
+                        assert sequence_of_arm != seq[start-sru:start]
+                    if end + sru <= fasta_length:
+                        assert sequence_of_arm != seq[end:end+sru]
                 writer.writerow(dict(new_row))
                 validated += 1
             # assert validated == total
