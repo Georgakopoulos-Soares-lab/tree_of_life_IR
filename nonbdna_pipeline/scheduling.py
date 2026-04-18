@@ -4,7 +4,7 @@ import random
 import numpy as np
 from abc import abstractmethod
 import uuid
-from validate_schedule import validate_schedule
+from nonbdna_pipeline.validate_schedule import validate_schedule
 class Scheduler:
     
     @abstractmethod

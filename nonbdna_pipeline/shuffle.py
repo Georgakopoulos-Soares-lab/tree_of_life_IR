@@ -35,7 +35,7 @@ def shuffle_genome(fasta, outdir, level = 2):
             shuffled = shuffler.shuffle()
             shuffled_seq += shuffled
         assert len(shuffled_seq) == total_len
-         # Wrap lines at 60 chars
+        # Wrap lines at 60 chars
         wrapped = b"\n".join([shuffled_seq[i:i+60] for i in range(0, len(shuffled_seq), 60)])
         shuffled_genome.write(b">%s\n%s\n" % (seqID.encode("utf-8"), wrapped))
         # shuffled_genome.write(b">%s\n%s\n" % (seqID.encode("utf-8"), shuffled_seq))

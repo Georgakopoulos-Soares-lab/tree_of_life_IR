@@ -11,7 +11,6 @@ from pathlib import Path
 import json
 import tempfile
 import subprocess
-from dotenv import load_dotenv
 from typing import ClassVar, Optional
 import pandas as pd
 from utils import parse_fasta
@@ -34,17 +33,16 @@ class MindiTool:
     fnp: dict = field(factory=dict, init=False)
     nonBDNA: str = field(init=True, default=None)
     nucleotides: ClassVar[set[str]] = {"a", "t", "g", "c"}
-    tempdir: Path = field(default=Path().cwd(), init=True)
+    tempdir: Path = field(factory=Path.cwd, init=True)
     HDNA_max_at_content: ClassVar[float] = 0.8
     HDNA_min_pyrine: ClassVar[float] = 0.9
     HDNA_max_pyrine: ClassVar[float] = 0.9
 
     def __attrs_post_init__(self) -> None:
-        load_dotenv()
         if self.nonBDNA is None:
             self.nonBDNA = Path("./gfa").resolve()
         if self.tempdir is None:
-            self.tempdir = Path().cwd()
+            self.tempdir = Path.cwd()
         else:
             self.tempdir = Path(self.tempdir).resolve()
             self.tempdir.mkdir(exist_ok=True)
@@ -78,6 +76,13 @@ class MindiTool:
         return '_'.join(Path(accession).name.split("_")[:2])
 
     def _generate_repeats(self, accession: str, pattern: list[str], **kwargs) -> "MindiTool":
+        """Run the non-B-DNA extractor binary on ``accession`` for every mode in ``pattern``.
+
+        The binary is executed inside a scratch temp dir (auto-cleaned) while ``cwd`` is
+        temporarily swapped. On exit — success, return-None, or raised exception — the
+        original cwd is restored and the scratch dir is removed. Returns ``self`` on
+        success, or ``None`` if the subprocess failed.
+        """
         self.reset()
         accession = Path(accession).resolve()
         initial_accession = accession
@@ -102,74 +107,74 @@ class MindiTool:
                     unzipped_tmp.write(handler.read())
                 accession = Path(unzipped_tmp.name).name
         os.chdir(accession_tmp_dir_path)
-        rand_accession_name = str(uuid.uuid4())
-        # unfortunately non b-gfa breaks with large names 
-        if len(Path(accession).name) > 60:
-            shutil.copy(accession, accession.name)
-            accession = accession.name
-        command = f"{self.nonBDNA} -seq {accession} -out {rand_accession_name} -skipAPR -skipSlipped -skipCruciform -skipTriplex -skipWGET"
-        seen_modes = set()
-        skipped = set()
-        for m in pattern:
-            if m == "IR":
-                command += f" -minIRrep 10 -maxIRspacer 8"
-            elif m == "MR":
-                command += f" -minMRrep {kwargs['MR']['minrep']} -maxMRspacer {kwargs['MR']['maxspacer']}"
-            elif m == "DR":
-                command += f" -minDRrep {kwargs['DR']['minrep']} -maxDRrep {kwargs['DR']['maxrep']} -maxDRspacer {kwargs['DR']['maxspacer']}"
-            seen_modes.add(m)
-        for m in ["IR", "MR", "DR", "Z", "GQ", "STR"]:
-            if m not in seen_modes:
-                if m == "IR":
-                    command += " -skipIR"
-                elif m == "MR":
-                    command += " -skipMR"
-                elif m == "DR":
-                    command += " -skipDR"
-                elif m == "STR":
-                    command += " -skipSTR"
-                elif m == "Z":
-                    command += " -skipZ"
-                elif m == "GQ":
-                    command += " -skipGQ"
-                skipped.add(m)
-        if not seen_modes:
-            raise ValueError(f'Unknown pattern match `{pattern}`.')
-        print(f"Input pattern detected: `{pattern}`.\nRunning command `{command}`...")
         try:
-            _ = subprocess.run(command, shell=True,
-                                    check=True,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL,
-                            )
-        except subprocess.CalledProcessError as e:
-            print(f"Encountered a process error while processing accession `{initial_accession}` for pattern `{pattern}` using the command `{command}`.")
-            print(e)
+            rand_accession_name = str(uuid.uuid4())
+            # unfortunately non b-gfa breaks with large names
+            if len(Path(accession).name) > 60:
+                shutil.copy(accession, accession.name)
+                accession = accession.name
+            command = f"{self.nonBDNA} -seq {accession} -out {rand_accession_name} -skipAPR -skipSlipped -skipCruciform -skipTriplex -skipWGET"
+            seen_modes = set()
+            skipped = set()
+            for m in pattern:
+                if m == "IR":
+                    command += f" -minIRrep 10 -maxIRspacer 8"
+                elif m == "MR":
+                    command += f" -minMRrep {kwargs['MR']['minrep']} -maxMRspacer {kwargs['MR']['maxspacer']}"
+                elif m == "DR":
+                    command += f" -minDRrep {kwargs['DR']['minrep']} -maxDRrep {kwargs['DR']['maxrep']} -maxDRspacer {kwargs['DR']['maxspacer']}"
+                seen_modes.add(m)
+            for m in ["IR", "MR", "DR", "Z", "GQ", "STR"]:
+                if m not in seen_modes:
+                    if m == "IR":
+                        command += " -skipIR"
+                    elif m == "MR":
+                        command += " -skipMR"
+                    elif m == "DR":
+                        command += " -skipDR"
+                    elif m == "STR":
+                        command += " -skipSTR"
+                    elif m == "Z":
+                        command += " -skipZ"
+                    elif m == "GQ":
+                        command += " -skipGQ"
+                    skipped.add(m)
+            if not seen_modes:
+                raise ValueError(f'Unknown pattern match `{pattern}`.')
+            print(f"Input pattern detected: `{pattern}`.\nRunning command `{command}`...")
+            try:
+                _ = subprocess.run(command, shell=True,
+                                        check=True,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL,
+                                )
+            except subprocess.CalledProcessError as e:
+                print(f"Encountered a process error while processing accession `{initial_accession}` for pattern `{pattern}` using the command `{command}`.")
+                print(e)
+                return None
+                # raise e
+
+            # check if operation was succesful
+            for mode in pattern:
+                if not Path(rand_accession_name + f"_{mode}.tsv").is_file():
+                    raise FileNotFoundError(f"Failed to extract {mode} for {accession}.")
+            # continue with processing
+            for mode in pattern:
+                shutil.move(rand_accession_name + f"_{mode}.tsv", accession_name + f"_{mode}.tsv")
+                shutil.move(rand_accession_name + f"_{mode}.gff", accession_name + f"_{mode}.gff")
+                destination = self.tempdir.joinpath(accession_name + f'_{mode}.tsv')
+                if destination.is_file():
+                    os.remove(destination)
+                out_tsv = accession_tmp_dir_path.joinpath(accession_name + f'_{mode}.tsv')
+                out_gff = accession_tmp_dir_path.joinpath(accession_name + f'_{mode}.gff')
+                shutil.move(out_tsv, destination)
+                # remove redundant files
+                os.unlink(out_gff)
+                # modify tmp file pointer
+                self.fn[mode] = self.tempdir.joinpath(accession_name + f'_{mode}.tsv')
+        finally:
             os.chdir(cur_dir)
             accession_tmp_dir.cleanup()
-            return None
-            # raise e
-
-        # check if operation was succesful
-        for mode in pattern:
-            if not Path(rand_accession_name + f"_{mode}.tsv").is_file():
-                raise FileNotFoundError(f"Failed to extract {mode} for {accession}.")
-        # continue with processing
-        for mode in pattern:
-            shutil.move(rand_accession_name + f"_{mode}.tsv", accession_name + f"_{mode}.tsv")
-            shutil.move(rand_accession_name + f"_{mode}.gff", accession_name + f"_{mode}.gff")
-            destination = self.tempdir.joinpath(accession_name + f'_{mode}.tsv')
-            if destination.is_file():
-                os.remove(destination)
-            out_tsv = accession_tmp_dir_path.joinpath(accession_name + f'_{mode}.tsv')
-            out_gff = accession_tmp_dir_path.joinpath(accession_name + f'_{mode}.gff')
-            shutil.move(out_tsv, destination)
-            # remove redundant files
-            os.unlink(out_gff)
-            # modify tmp file pointer
-            self.fn[mode] = self.tempdir.joinpath(accession_name + f'_{mode}.tsv')
-        accession_tmp_dir.cleanup()
-        os.chdir(cur_dir)
         return self
 
     def get_right_arm(self, left_arm: str, mode: str) -> str:
@@ -308,7 +313,7 @@ class MindiTool:
         if 'MR' not in self.fnp:
             raise ValueError("Cannot proceed with H-DNA filtering. Mirror Repeats have not been extracted.")
         mindi_table = pd.read_table(self.fnp["MR"])
-        return MindiTool.get_HDNA(mindi_table)
+        return MindiTool.filter_HDNA(mindi_table)
 
     def cleanup(self) -> None:
         removed_any = False
@@ -340,35 +345,49 @@ class MindiTool:
     def reverse(kmer: str) -> str:
         return ''.join(MindiTool.complement(c) for c in kmer)[::-1]
 
-    def retrieve_spacer(self, sequence: str, 
+    def retrieve_spacer(self, sequence: str,
                         sequence_of_arm: str,
-                        sequence_length: int, 
+                        sequence_length: int,
                         repeat: int, mode: str) -> Optional[str]:
-        """"""
+        """Extract the spacer for an IR/DR/MR record, or ``"."`` for modes without a spacer.
+
+        Returns ``None`` when the record is invalid (non-ATGC bases, arm/right-arm
+        mismatch, or spacer exceeds ``self.max_spacer``) so the caller can skip it
+        rather than crash the whole accession.
+        """
         if mode == "IR" or mode == "DR" or mode == "MR":
             true_spacer_length = sequence_length - 2 * repeat
             right_arm = sequence[repeat+true_spacer_length:]
             if any(n not in MindiTool.nucleotides for n in right_arm) or any(n not in MindiTool.nucleotides for n in sequence_of_arm):
                 logging.warning("Invalid record detected with non-AGCT nucleotide present in sequence of arm.")
-                return 
+                return None
 
             true_spacer = sequence[repeat:repeat+true_spacer_length]
             if len(true_spacer) == 0:
                 true_spacer = "."
             # skip maximum spacer length
             if (isinstance(self.max_spacer, int) and true_spacer_length > self.max_spacer):
-                # invalid record?
-                raise ValueError(f"Invalid record detected. Max spacer was found {true_spacer_length} but cannot exceed {self.max_spacer}.")
+                logging.warning(f"Invalid record detected. Max spacer was found {true_spacer_length} but cannot exceed {self.max_spacer}.")
+                return None
             right_arm = self.get_right_arm(sequence_of_arm, mode=mode)
             if right_arm != sequence[repeat+true_spacer_length:]:
                 logging.warning(f"Invalid record detected with arm {sequence_of_arm} not equal to the right arm {right_arm}.")
-                return 
+                return None
         else:
             # set null spacer for all other NON BDNA modes
             true_spacer = "."
         return true_spacer
 
     def sanitize(self, accession: os.PathLike[str], mode: str) -> None:
+        """Validate and rewrite the raw extractor TSV into a sanitized ``.processed.tsv``.
+
+        For each record: checks coordinate/sequence consistency against the fasta,
+        retrieves the spacer (IR/DR/MR), re-aligns tandem copies (STR), and enforces
+        mode-specific structural assertions. Records that can't be reconciled with
+        the fasta (e.g. extractor reports end past the sequence edge for IR/DR/MR)
+        or whose spacer is invalid are skipped with a warning; they do not crash
+        the whole accession.
+        """
         print(colored(f"Validating accession `{accession}` for {mode=}...", "blue"))
         filtered_file = (
                     Path(self.fn[mode]).resolve()
@@ -398,6 +417,7 @@ class MindiTool:
             return self.fnp[mode]
         total = 0
         validated = 0
+        skipped = 0
         new_row = {}
         for seqID, seq in parse_fasta(accession):
             temp = df[df['Sequence_name'] == seqID]
@@ -411,15 +431,20 @@ class MindiTool:
                 arm_length = int(row["Repeat"])
                 sequence_of_arm = sequence[:arm_length]
                 length = len(sequence)
-                # 
-                # # # # # # 
+                # Handle records whose reported end runs past the fasta edge.
+                # For STR we re-align below (arm tiling survives truncation).
+                # For IR/DR/MR the arm+spacer+arm structure would be destroyed by
+                # a right-end trim, so skip those records rather than crash downstream.
                 if end > fasta_length:
+                    if mode in ("IR", "DR", "MR"):
+                        logging.warning(f"Skipping record for {seqID} in {accession} (mode {mode}): end {end} > fasta_length {fasta_length}.")
+                        skipped += 1
+                        continue
                     diff = end - fasta_length
                     sequence = sequence[:len(sequence)-diff]
                     end = min(end, fasta_length)
                     length = len(sequence)
                     logging.warning(f"There was a change of record for {accession=} due to end of sequence {end} > {fasta_length}.")
-                    # print(f"There was a change of record for {accession=} due to end of sequence {end} > {fasta_length} (mode {mode}).")
                 # Process STR
                 if mode == "STR":
                     sru = len(sequence_of_arm)
@@ -431,7 +456,6 @@ class MindiTool:
                         sequence = sequence[:consensus_repeats * sru]
                         length = consensus_repeats * sru
                         end = start + length
-                        # print(f"There was a change of record for {accession=} due to STR processing (mode {mode}).")
                         logging.warning(f"There was a change of record for {accession=} due to STR processing (mode {mode}).")
                     
                     new_row["consensus_repeats"] = consensus_repeats
@@ -439,22 +463,23 @@ class MindiTool:
                         
                 # Process STR
                 fasta_seq = seq[start: end].lower()
-                # general assertions
                 assert end - start == length, f"Length mismatch for {seqID} in {accession}. Expected {length} but got {end - start}."
                 assert sequence == fasta_seq and len(fasta_seq) == length, f"Sequence mismatch for {seqID} in {accession}. Expected {sequence} but got {fasta_seq}."
-                # update new row
                 new_row["seqID"] = seqID
                 new_row["start"] = start
                 new_row["end"] = end
                 new_row["sequence_of_arm"] = sequence_of_arm
                 new_row["arm_length"] = arm_length
                 # Spacer retrieval 
-                sequence_of_spacer = self.retrieve_spacer(sequence=sequence, 
-                                                            sequence_of_arm=sequence_of_arm, 
-                                                            sequence_length=length, 
-                                                            repeat=arm_length, 
+                sequence_of_spacer = self.retrieve_spacer(sequence=sequence,
+                                                            sequence_of_arm=sequence_of_arm,
+                                                            sequence_length=length,
+                                                            repeat=arm_length,
                                                             mode=mode)
-                assert sequence_of_spacer is not None, f"Invalid sequence of spacer for {seqID} in {accession}. Critical {row}."
+                if sequence_of_spacer is None:
+                    logging.warning(f"Skipping record for {seqID} in {accession} (mode {mode}): invalid spacer/arm.")
+                    skipped += 1
+                    continue
                 if sequence_of_spacer == ".":
                     spacer_length = 0
                 else:
@@ -493,10 +518,12 @@ class MindiTool:
                 writer.writerow(dict(new_row))
                 validated += 1
             # assert validated == total
-        if validated == total:
+        if validated + skipped == total and skipped == 0:
             logging.info(f'Accession {accession} has passed all checks (mode {mode}).')
+        elif validated + skipped == total:
+            logging.info(f'Accession {accession} processed with skipped records: TOTAL={total}, VALIDATED={validated}, SKIPPED={skipped} (mode {mode}).')
         else:
-            logging.info(f'Accession {accession} has FAILED checks {total},VALIDATED={validated},FAILED={total-validated} (mode {mode}).')
+            logging.info(f'Accession {accession} has FAILED checks {total},VALIDATED={validated},SKIPPED={skipped},FAILED={total-validated-skipped} (mode {mode}).')
         fout.close()
         self.fnp[mode] = filtered_file
         return self.fnp[mode]

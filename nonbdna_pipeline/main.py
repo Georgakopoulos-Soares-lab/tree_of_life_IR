@@ -54,7 +54,7 @@ class Extractor:
         total_accessions = len(infiles)
         if total_accessions == 0:
             logging.info(f"No accessions found for bucket `{bucket_id}` in schedule `{schedule}`.")
-            exit(0)
+            return
         else:
             logging.info(f"Loaded `{total_accessions}` accessions for bucket `{bucket_id}` in schedule `{schedule}`.")
         fout = {}
@@ -70,7 +70,7 @@ class Extractor:
             # logging.info(f"Processing accession: {accession}. Progress: {(i-1) * 1e2 / total_accessions:.2f}% (Bucket ID: {args.bucket_id}).")
             hunter = MindiTool(tempdir=self.outdir)
             result = hunter.extract(accession, 
-                                    pattern=args.pattern)
+                                    pattern=pattern)
             if result is None:
                 logging.error(f"Extraction failed for accession: {accession}.")
                 continue
